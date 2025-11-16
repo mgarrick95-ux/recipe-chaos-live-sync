@@ -1,24 +1,15 @@
-"use client";
+ import { createClient } from "@supabase/supabase-js";
 
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-// Read from NEXT_PUBLIC_ env vars so both server and browser see the same values
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-
-// Simple flag for the UI
-export const hasSupabase = Boolean(supabaseUrl && supabaseAnonKey);
-
-let client: SupabaseClient | null = null;
-
-if (hasSupabase) {
-  client = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      // we don't need user auth for this simple app
-      persistSession: false,
-    },
-  });
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    "Supabase is not configured. Check your .env.local file (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY)."
+  );
 }
 
-// Export a single shared client (or null if not configured)
-export const supabase = client;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  
