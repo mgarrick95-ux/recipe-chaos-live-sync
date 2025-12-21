@@ -1,0 +1,1 @@
+export async function POST() { return new Response(JSON.stringify({ plan: { startDate: new Date().toISOString().slice(0,10), days: [], shoppingList: [] } }), { headers:{'Content-Type':'application/json'} }); }
