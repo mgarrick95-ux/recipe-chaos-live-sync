@@ -1,301 +1,387 @@
-// app/api/recipes/import/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-type ImportBody = {
-  url?: string;
-  title?: string;
+type ImportRequest = {
+  url: string;
 };
 
-function safeTrim(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
-}
-
-function deriveHost(urlStr: string): string | null {
+function hostFromUrl(urlStr: string): string | null {
   try {
     const u = new URL(urlStr);
-    return u.hostname.replace(/^www\./, "") || null;
+    return u.hostname.replace(/^www\./, "");
   } catch {
     return null;
   }
 }
 
-function stripTags(html: string): string {
-  // Very lightweight sanitizer (not perfect, but safe enough for readable text)
-  const noScript = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ");
-  const text = noScript
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<\/h\d>/gi, "\n")
-    .replace(/<[^>]+>/g, " ");
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function stripHtmlTags(input: string): string {
+  return input.replace(/<[^>]*>/g, " ");
 }
 
-function decodeHtmlEntities(s: string): string {
-  return s
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+function normalizeWhitespace(input: string): string {
+  return input.replace(/\s+/g, " ").trim();
 }
 
-function extractJsonLdBlocks(html: string): string[] {
+function cleanText(input: string): string {
+  return normalizeWhitespace(stripHtmlTags(input || ""));
+}
+
+function safeJsonParse(value: string): any | null {
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Gentle fix for common invalid trailing commas:
+    try {
+      const fixed = value
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]")
+        .trim();
+      return JSON.parse(fixed);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function extractMeta(html: string, property: string): string | null {
+  const re = new RegExp(
+    `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["'][^>]*>`,
+    "i"
+  );
+  const m = html.match(re);
+  return m?.[1] ? cleanText(m[1]) : null;
+}
+
+function extractTitle(html: string): string | null {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!m?.[1]) return null;
+  const t = cleanText(m[1]);
+  return t || null;
+}
+
+function findJsonLdBlocks(html: string): string[] {
   const blocks: string[] = [];
-  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const re =
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
-    const raw = m[1]?.trim();
+    const raw = (m[1] || "").trim();
     if (raw) blocks.push(raw);
   }
   return blocks;
 }
 
-function normalizeToArray<T>(v: T | T[] | null | undefined): T[] {
-  if (!v) return [];
-  return Array.isArray(v) ? v : [v];
+function isRecipeType(node: any): boolean {
+  const t = node?.["@type"];
+  if (!t) return false;
+  if (typeof t === "string") return t.toLowerCase() === "recipe";
+  if (Array.isArray(t))
+    return t.some((x) => String(x).toLowerCase() === "recipe");
+  return false;
 }
 
-function pickRecipeNodeFromJsonLd(json: any): any | null {
-  // JSON-LD can be: object, array, or { @graph: [...] }
-  const candidates: any[] = [];
-
-  const pushNode = (node: any) => {
-    if (!node || typeof node !== "object") return;
-    candidates.push(node);
-  };
-
-  if (Array.isArray(json)) {
-    json.forEach(pushNode);
-  } else if (json && typeof json === "object") {
-    if (Array.isArray(json["@graph"])) json["@graph"].forEach(pushNode);
-    pushNode(json);
-  }
-
-  // Some nodes wrap the Recipe in "mainEntity"
-  const expanded: any[] = [];
-  for (const c of candidates) {
-    expanded.push(c);
-    if (c.mainEntity) {
-      normalizeToArray(c.mainEntity).forEach((n) => expanded.push(n));
-    }
-  }
-
-  const isRecipeType = (t: any) => {
-    if (!t) return false;
-    if (typeof t === "string") return t.toLowerCase() === "recipe";
-    if (Array.isArray(t)) return t.some((x) => typeof x === "string" && x.toLowerCase() === "recipe");
-    return false;
-  };
-
-  const recipe = expanded.find((n) => isRecipeType(n["@type"]));
-  return recipe ?? null;
+function unwrapGraph(json: any): any[] {
+  if (!json) return [];
+  if (Array.isArray(json)) return json;
+  if (json["@graph"] && Array.isArray(json["@graph"])) return json["@graph"];
+  return [json];
 }
 
-function asString(v: any): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v.trim();
-  return String(v).trim();
+function pickRecipeNode(jsonLd: any): any | null {
+  const nodes = unwrapGraph(jsonLd).flatMap((n) => unwrapGraph(n));
+  for (const node of nodes) {
+    if (isRecipeType(node)) return node;
+  }
+  return null;
 }
 
-function asStringArray(v: any): string[] {
-  if (!v) return [];
-  if (Array.isArray(v)) {
-    return v.map((x) => asString(x)).filter(Boolean);
-  }
-  if (typeof v === "string") {
-    // Sometimes instructions come as one blob
-    return v
-      .split(/\r?\n/)
-      .map((x) => x.trim())
+function normalizeStringArray(value: any): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((v) =>
+        typeof v === "string" ? v : v?.text ?? v?.name ?? String(v)
+      )
+      .map((s) => cleanText(String(s)))
       .filter(Boolean);
   }
-  return [asString(v)].filter(Boolean);
-}
-
-function parseHowToSteps(v: any): string[] {
-  // recipeInstructions can be:
-  // - string
-  // - array of strings
-  // - array of HowToStep objects { text: "..." }
-  // - nested objects
-  if (!v) return [];
-  if (typeof v === "string") return [v.trim()].filter(Boolean);
-
-  if (Array.isArray(v)) {
-    const out: string[] = [];
-    for (const item of v) {
-      if (typeof item === "string") {
-        const s = item.trim();
-        if (s) out.push(s);
-        continue;
-      }
-      if (item && typeof item === "object") {
-        // HowToStep
-        const t = asString(item.text || item.name || item.description);
-        if (t) out.push(t);
-        // Some sites embed "itemListElement"
-        if (item.itemListElement) {
-          parseHowToSteps(item.itemListElement).forEach((x) => out.push(x));
-        }
-      }
-    }
-    return out.filter(Boolean);
+  if (typeof value === "string") {
+    const s = cleanText(value);
+    return s ? [s] : [];
   }
-
-  if (v && typeof v === "object") {
-    if (v.itemListElement) return parseHowToSteps(v.itemListElement);
-    const t = asString(v.text || v.name || v.description);
-    return t ? [t] : [];
-  }
-
   return [];
 }
 
-function extractTitleFromHtml(html: string): string | null {
-  // og:title
-  const og = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i);
-  if (og?.[1]) return decodeHtmlEntities(og[1]).trim();
+function extractDescription(recipeNode: any): string | null {
+  const d = recipeNode?.description ?? recipeNode?.summary ?? null;
+  if (!d) return null;
+  const s = cleanText(String(d));
+  return s || null;
+}
 
-  // <title>
-  const t = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  if (t?.[1]) return decodeHtmlEntities(t[1]).trim();
+function extractName(recipeNode: any): string | null {
+  const n = recipeNode?.name ?? recipeNode?.headline ?? null;
+  if (!n) return null;
+  const s = cleanText(String(n));
+  return s || null;
+}
 
-  return null;
+function extractIngredients(recipeNode: any): string[] {
+  return normalizeStringArray(recipeNode?.recipeIngredient);
+}
+
+/**
+ * STEP CLEANUP (the whole point of Step 2)
+ */
+function stripStepHeaders(line: string): string {
+  // Remove leading "Directions:", "Instructions:", etc.
+  return line
+    .replace(/^\s*(directions|direction|instructions|instruction|method)\s*:\s*/i, "")
+    .trim();
+}
+
+function splitNumberedBlob(text: string): string[] {
+  // Split on common numbered formats:
+  // "1. Do this" "2) Do that" "3 - Do next"
+  const parts = text
+    .split(/\s*(?:^|\n)\s*\d+\s*(?:[.)-])\s+/g)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length > 1 ? parts : [];
+}
+
+function splitByNewlines(text: string): string[] {
+  const parts = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split(/\n+/g)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length > 1 ? parts : [];
+}
+
+function splitSentenceFallback(text: string): string[] {
+  // Only used when it clearly looks like a blob and has multiple sentences.
+  // This is intentionally conservative.
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length < 120) return [];
+  const sentenceCount = (cleaned.match(/[.!?]\s+/g) || []).length;
+  if (sentenceCount < 2) return [];
+
+  const parts = cleaned
+    .split(/(?<=[.!?])\s+/g)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  // Avoid turning it into 30 micro-steps:
+  if (parts.length < 2) return [];
+  if (parts.length > 20) return []; // too fragmented
+  return parts;
+}
+
+function normalizeSteps(rawSteps: string[]): string[] {
+  const cleaned = (rawSteps || [])
+    .map((s) => stripStepHeaders(cleanText(String(s))))
+    .map((s) => s.replace(/^\s*[-•]+\s*/g, "").trim()) // bullet cleanup
+    .filter(Boolean);
+
+  if (cleaned.length === 0) return [];
+
+  // If we got many steps already, just return them.
+  if (cleaned.length >= 2) return cleaned;
+
+  // If only one "blob", attempt smart splits
+  const blob = cleaned[0];
+
+  // 1) Split by newlines (common when JSON-LD packed a multi-line string)
+  const nl = splitByNewlines(blob);
+  if (nl.length >= 2) return nl;
+
+  // 2) Split by numbering formats
+  const numbered = splitNumberedBlob(blob);
+  if (numbered.length >= 2) return numbered;
+
+  // 3) Sentence fallback (only when safe)
+  const sentences = splitSentenceFallback(blob);
+  if (sentences.length >= 2) return sentences;
+
+  // Keep as single step if we can't confidently split
+  return [blob];
+}
+
+function extractInstructions(recipeNode: any): string[] {
+  const ri = recipeNode?.recipeInstructions;
+  if (!ri) return [];
+
+  // Can be:
+  // - string
+  // - array of strings
+  // - array of HowToStep objects { text: ... }
+  // - array of HowToSection objects { itemListElement: [...] }
+  let out: string[] = [];
+
+  if (typeof ri === "string") {
+    out = normalizeStringArray(ri);
+    return normalizeSteps(out);
+  }
+
+  if (Array.isArray(ri)) {
+    for (const item of ri) {
+      if (!item) continue;
+
+      if (typeof item === "string") {
+        out.push(cleanText(item));
+        continue;
+      }
+
+      const type = item?.["@type"];
+      const lowerType = type ? String(type).toLowerCase() : "";
+
+      if (lowerType === "howtostep") {
+        const t = item?.text ?? item?.name ?? "";
+        const cleaned = cleanText(String(t));
+        if (cleaned) out.push(cleaned);
+        continue;
+      }
+
+      if (lowerType === "howtosection") {
+        const elements = item?.itemListElement;
+        if (Array.isArray(elements)) {
+          for (const el of elements) {
+            if (typeof el === "string") {
+              const cleaned = cleanText(el);
+              if (cleaned) out.push(cleaned);
+            } else {
+              const t = el?.text ?? el?.name ?? "";
+              const cleaned = cleanText(String(t));
+              if (cleaned) out.push(cleaned);
+            }
+          }
+        }
+        continue;
+      }
+
+      // Unknown object shape fallback
+      const t = item?.text ?? item?.name ?? "";
+      const cleaned = cleanText(String(t));
+      if (cleaned) out.push(cleaned);
+    }
+
+    return normalizeSteps(out);
+  }
+
+  // Object fallback
+  const fallback = ri?.text ?? ri?.name ?? "";
+  out = normalizeStringArray(fallback);
+  return normalizeSteps(out);
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as ImportBody;
-
-    const url = safeTrim(body.url);
-    const customTitle = safeTrim(body.title);
+    const body = (await req.json().catch(() => null)) as ImportRequest | null;
+    const url = body?.url?.trim();
 
     if (!url) {
-      return NextResponse.json({ error: "URL is required." }, { status: 400 });
+      return NextResponse.json({ error: "Missing url" }, { status: 400 });
     }
 
-    let parsedUrl: URL;
+    let parsed: URL;
     try {
-      parsedUrl = new URL(url);
+      parsed = new URL(url);
     } catch {
-      return NextResponse.json(
-        { error: "Please enter a valid URL (including https://)." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
     }
 
-    // Fetch the page server-side
-    const res = await fetch(parsedUrl.toString(), {
-      method: "GET",
+    const res = await fetch(parsed.toString(), {
+      redirect: "follow",
       headers: {
-        // Avoid some basic bot blocks
         "User-Agent":
           "Mozilla/5.0 (compatible; RecipeChaos/1.0; +https://localhost)",
         Accept: "text/html,application/xhtml+xml",
       },
-      redirect: "follow",
+      cache: "no-store",
     });
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: `Could not fetch page (HTTP ${res.status}).` },
+        { error: `Fetch failed (${res.status})` },
         { status: 400 }
       );
     }
 
     const html = await res.text();
 
-    // 1) Try JSON-LD recipe
-    let extractedTitle: string | null = null;
-    let extractedIngredients: string[] = [];
-    let extractedInstructions: string[] = [];
+    const jsonBlocks = findJsonLdBlocks(html);
 
-    const blocks = extractJsonLdBlocks(html);
-    for (const b of blocks) {
-      try {
-        const json = JSON.parse(b);
-        const recipeNode = pickRecipeNodeFromJsonLd(json);
-        if (!recipeNode) continue;
+    let title: string | null = null;
+    let description: string | null = null;
+    let ingredients: string[] = [];
+    let instructions: string[] = [];
 
-        extractedTitle = asString(recipeNode.name) || extractedTitle;
+    for (const block of jsonBlocks) {
+      const json = safeJsonParse(block);
+      if (!json) continue;
 
-        extractedIngredients =
-          asStringArray(recipeNode.recipeIngredient) || extractedIngredients;
+      const recipeNode = pickRecipeNode(json);
+      if (!recipeNode) continue;
 
-        extractedInstructions =
-          parseHowToSteps(recipeNode.recipeInstructions) ||
-          extractedInstructions;
+      title = extractName(recipeNode) || title;
+      description = extractDescription(recipeNode) || description;
+      ingredients = extractIngredients(recipeNode);
+      instructions = extractInstructions(recipeNode);
 
-        // If we found real ingredients or instructions, we’re good
-        if (extractedIngredients.length > 0 || extractedInstructions.length > 0) {
-          break;
-        }
-      } catch {
-        // ignore broken blocks
-      }
+      break;
     }
 
-    // 2) Fallback title from HTML if none
-    if (!extractedTitle) extractedTitle = extractTitleFromHtml(html);
+    if (!title) {
+      title =
+        extractMeta(html, "og:title") ||
+        extractMeta(html, "twitter:title") ||
+        extractTitle(html) ||
+        "Clipped recipe";
+    }
 
-    const host = deriveHost(url);
-    const finalTitle =
-      customTitle ||
-      extractedTitle ||
-      (host ? `Imported recipe (${host})` : "Imported recipe");
+    if (!description) {
+      description =
+        extractMeta(html, "og:description") ||
+        extractMeta(html, "twitter:description") ||
+        null;
+    }
 
-    // “Readable” source text
-    const sourceText = stripTags(html);
-
-    const sourceName = host;
-
-    const insertPayload: Record<string, any> = {
-      title: finalTitle,
-      source_url: url,
-      source_name: sourceName,
-      ingredients: extractedIngredients,
-      instructions: extractedInstructions,
-      source_text: sourceText,
-      source_html: html,
-    };
+    const sourceHost = hostFromUrl(url);
+    const sourceName = sourceHost || null;
 
     const { data, error } = await supabaseServer
       .from("recipes")
-      .insert(insertPayload)
+      .insert({
+        title,
+        description,
+        source_url: url,
+        source_name: sourceName,
+        ingredients: ingredients.length ? ingredients : null,
+        instructions: instructions.length ? instructions : null,
+      })
       .select("id")
       .single();
 
-    if (error) {
+    if (error || !data?.id) {
       return NextResponse.json(
-        { error: error.message ?? "Failed to create imported recipe." },
+        { error: error?.message || "Insert failed" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
-      {
-        id: data.id,
-        counts: {
-          ingredients: extractedIngredients.length,
-          instructions: extractedInstructions.length,
-          sourceTextChars: sourceText.length,
-        },
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      id: data.id,
+      title,
+      source_url: url,
+      source_name: sourceName,
+      ingredientsCount: ingredients.length,
+      instructionsCount: instructions.length,
+    });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message ?? "Unexpected error." },
+      { error: e?.message || "Unknown error" },
       { status: 500 }
     );
   }

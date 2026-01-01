@@ -1,3 +1,5 @@
+// lib/ingredientMatch.ts
+
 export type StorageItem = {
   id: string;
   name?: string | null;
@@ -11,22 +13,62 @@ export type StorageItem = {
   [key: string]: any;
 };
 
+function toPrettyString(v: any): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+
+  if (typeof v === "object") {
+    const picked =
+      v.name ??
+      v.ingredient ??
+      v.text ??
+      v.value ??
+      v.label ??
+      v.title ??
+      null;
+
+    if (typeof picked === "string" && picked.trim()) return picked.trim();
+
+    // IMPORTANT:
+    // Do NOT stringify unknown objects (prevents "[object Object]" polluting arrays)
+    return "";
+  }
+
+  return "";
+}
+
 export function toStringArray(value: unknown): string[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value.map(String).map((s) => s.trim()).filter(Boolean);
+
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => toPrettyString(v))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
 
   if (typeof value === "string") {
     const s = value.trim();
     if (!s) return [];
+
+    // If it's a JSON array string, parse it.
     if (s.startsWith("[") && s.endsWith("]")) {
       try {
         return toStringArray(JSON.parse(s));
-      } catch {}
+      } catch {
+        // fall through to comma-split
+      }
     }
-    return s.split(",").map((x) => x.trim()).filter(Boolean);
+
+    return s
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
   }
 
-  return [String(value)].map((s) => s.trim()).filter(Boolean);
+  const single = toPrettyString(value);
+  return single ? [single.trim()].filter(Boolean) : [];
 }
 
 export function norm(s: string) {
@@ -91,9 +133,9 @@ export function buildStorageIndex(items: StorageItem[]) {
 }
 
 /**
- * This is intentionally "simple + stable" (same behavior we’ve been using):
+ * Simple + stable:
  * - exact normalized match
- * - containment match as a fallback
+ * - containment match as fallback
  */
 export function summarizeIngredients(
   ingredients: string[],
@@ -133,7 +175,7 @@ export function summarizeIngredients(
 }
 
 /**
- * Handles the storage API response shapes:
+ * Handles storage API response shapes:
  * - [...]
  * - { items: [...] }
  * - { data: [...] }

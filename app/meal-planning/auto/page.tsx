@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Recipe = {
@@ -12,7 +12,7 @@ type Recipe = {
 };
 
 type Slot = {
-  slotId: string;        // stable key
+  slotId: string;
   recipeId: string | null;
   locked: boolean;
 };
@@ -40,7 +40,6 @@ function addDays(date: Date, days: number) {
 }
 
 function uid() {
-  // stable enough for client-only slot IDs
   return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16);
 }
 
@@ -68,15 +67,15 @@ export default function SmartMealPlanningPage() {
 
   const [weekStart, setWeekStart] = useState<Date>(initialStart);
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
-  const [draftDate, setDraftDate] = useState<string>(toISODate(weekStart));
+  const weekStartStr = useMemo(() => toISODate(weekStart), [weekStart]);
+  const weekEndStr = useMemo(() => toISODate(weekEnd), [weekEnd]);
+
+  const [draftDate, setDraftDate] = useState<string>(toISODate(initialStart));
 
   useEffect(() => {
     setWeekStart(initialStart);
     setDraftDate(toISODate(initialStart));
   }, [initialStart]);
-
-  const weekStartStr = useMemo(() => toISODate(weekStart), [weekStart]);
-  const weekEndStr = useMemo(() => toISODate(weekEnd), [weekEnd]);
 
   function goToWeek(d: Date) {
     const monday = startOfWeekMonday(d);
@@ -97,7 +96,6 @@ export default function SmartMealPlanningPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
 
-  // 7 slots = 7 dinners, tweak later if you want
   const [slots, setSlots] = useState<Slot[]>(() =>
     Array.from({ length: 7 }).map(() => ({
       slotId: uid(),
@@ -106,7 +104,9 @@ export default function SmartMealPlanningPage() {
     }))
   );
 
-  // Load recipes once
+  const lastLoadedWeek = useRef<string>("");
+
+  // Load recipes
   useEffect(() => {
     let alive = true;
 
@@ -135,8 +135,15 @@ export default function SmartMealPlanningPage() {
   }, []);
 
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
+  const favoriteIds = useMemo(() => new Set(recipes.filter((r) => r.favorite).map((r) => r.id)), [recipes]);
 
-  // Optional: load saved week memory (so smart page reflects the current plan)
+  function buildCandidatePool(exclude: Set<string>) {
+    const favs = recipes.filter((r) => favoriteIds.has(r.id) && !exclude.has(r.id));
+    const others = recipes.filter((r) => !favoriteIds.has(r.id) && !exclude.has(r.id));
+    return [...shuffle(favs), ...shuffle(others)];
+  }
+
+  // Load week plan from Supabase (same as Manual)
   useEffect(() => {
     let alive = true;
 
@@ -147,40 +154,28 @@ export default function SmartMealPlanningPage() {
           cache: "no-store",
         });
         const json = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(json?.error || "Failed to load week memory");
+        if (!res.ok) throw new Error(json?.error || "Failed to load week");
 
-        const ids: string[] = json?.plan?.selected_recipe_ids ?? [];
+        const ids: (string | null)[] = Array.isArray(json?.plan?.selected_recipe_ids)
+          ? (json.plan.selected_recipe_ids as (string | null)[])
+          : [];
 
-        // Apply into slots WITHOUT breaking locks:
-        // - if locked slots already have a recipe, keep them
-        // - fill remaining slots from saved plan in order
         if (!alive) return;
 
-        setSlots((prev) => {
-          const next = prev.map((s) => ({ ...s }));
-          const used = new Set<string>();
+        if (lastLoadedWeek.current !== weekStartStr) {
+          lastLoadedWeek.current = weekStartStr;
+          setSlots((prev) =>
+            prev.map((s, i) => ({
+              ...s,
+              recipeId: (ids[i] as any) ?? null,
+              locked: false,
+            }))
+          );
+        }
 
-          // keep locked recipeIds
-          for (const s of next) {
-            if (s.locked && s.recipeId) used.add(s.recipeId);
-          }
-
-          // place saved ids into unlocked slots
-          let idx = 0;
-          for (const s of next) {
-            if (s.locked) continue;
-            // advance to next unused saved id
-            while (idx < ids.length && used.has(ids[idx])) idx++;
-            s.recipeId = idx < ids.length ? ids[idx] : s.recipeId;
-            if (s.recipeId) used.add(s.recipeId);
-            idx++;
-          }
-
-          setStatus("");
-          return next;
-        });
-      } catch {
-        if (alive) setStatus("Week error");
+        setStatus("");
+      } catch (e: any) {
+        if (alive) setStatus(e?.message || "Week load error");
       }
     }
 
@@ -190,286 +185,236 @@ export default function SmartMealPlanningPage() {
     };
   }, [weekStartStr]);
 
-  // --- SMART PICK LOGIC (favorites-first + random) ---
-  // You can improve scoring later (storage match, tags, etc.)
-  const favoriteIds = useMemo(() => {
-    return new Set(recipes.filter((r) => r.favorite).map((r) => r.id));
-  }, [recipes]);
-
-  function buildCandidatePool(exclude: Set<string>) {
-    const favs = recipes.filter((r) => favoriteIds.has(r.id) && !exclude.has(r.id));
-    const others = recipes.filter((r) => !favoriteIds.has(r.id) && !exclude.has(r.id));
-
-    // favorites first, both shuffled
-    return [...shuffle(favs), ...shuffle(others)];
-  }
-
-  function generateIntoUnlocked() {
-    setSlots((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      const used = new Set<string>();
-
-      // keep current recipes for locked slots, and also keep already-assigned recipes
-      for (const s of next) {
-        if (s.recipeId) used.add(s.recipeId);
-      }
-
-      // BUT: when regenerating, we want to free up unlocked slots (their recipeIds can change)
-      // So remove unlocked slot recipeIds from used set, because they’re allowed to be replaced.
-      for (const s of next) {
-        if (!s.locked && s.recipeId) used.delete(s.recipeId);
-      }
-
-      const pool = buildCandidatePool(used);
-      let poolIdx = 0;
-
-      for (const s of next) {
-        if (s.locked) continue; // do not touch locked slots
-        const pick = pool[poolIdx++];
-        s.recipeId = pick ? pick.id : null;
-      }
-
-      return next;
-    });
-  }
-
-  // Initial generation if empty
-  useEffect(() => {
-    if (loadingRecipes || error) return;
-    const hasAny = slots.some((s) => s.recipeId);
-    if (!hasAny && recipes.length) {
-      generateIntoUnlocked();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingRecipes, error, recipes.length]);
-
   function toggleLock(slotId: string) {
-    setSlots((prev) =>
-      prev.map((s) => (s.slotId === slotId ? { ...s, locked: !s.locked } : s))
-    );
+    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, locked: !s.locked } : s)));
   }
 
-  function clearSlot(slotId: string) {
-    setSlots((prev) =>
-      prev.map((s) =>
-        s.slotId === slotId ? { ...s, recipeId: null, locked: false } : s
-      )
-    );
+  function clearUnlocked() {
+    setSlots((prev) => prev.map((s) => (s.locked ? s : { ...s, recipeId: null })));
+    setStatus("Cleared unlocked slots.");
+    window.setTimeout(() => setStatus(""), 1400);
   }
 
-  async function saveSelection() {
+  function regenerateUnlocked() {
+    if (!recipes.length) {
+      setStatus("No recipes available yet.");
+      window.setTimeout(() => setStatus(""), 1400);
+      return;
+    }
+
+    setSlots((prev) => {
+      const lockedIds = new Set(prev.filter((s) => s.locked && s.recipeId).map((s) => s.recipeId!));
+      const pool = buildCandidatePool(lockedIds);
+
+      let poolIdx = 0;
+      const used = new Set<string>(lockedIds);
+
+      return prev.map((s) => {
+        if (s.locked) return s;
+
+        while (poolIdx < pool.length && used.has(pool[poolIdx].id)) poolIdx++;
+        const picked = poolIdx < pool.length ? pool[poolIdx++].id : null;
+        if (picked) used.add(picked);
+
+        return { ...s, recipeId: picked };
+      });
+    });
+
+    setStatus("Regenerated unlocked picks.");
+    window.setTimeout(() => setStatus(""), 1400);
+  }
+
+  function pickRecipe(slotId: string, recipeId: string | null) {
+    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, recipeId } : s)));
+  }
+
+  async function saveLockedToManual() {
     try {
-      setStatus("Saving…");
-      const selectedIds = slots.map((s) => s.recipeId).filter(Boolean) as string[];
+      const lockedPicked = slots
+        .filter((s) => s.locked && s.recipeId)
+        .map((s) => s.recipeId!)
+        .filter((id, idx, arr) => arr.indexOf(id) === idx);
 
-      const res = await fetch("/api/meal-plans/current", {
+      if (lockedPicked.length === 0) {
+        setStatus("Lock at least one picked recipe first.");
+        window.setTimeout(() => setStatus(""), 1600);
+        return;
+      }
+
+      setStatus("Saving locked picks…");
+
+      const getRes = await fetch(`/api/meal-plans/current?start=${weekStartStr}`, { cache: "no-store" });
+      const getJson = await getRes.json().catch(() => null);
+      if (!getRes.ok) throw new Error(getJson?.error || "Failed to load current plan");
+
+      const currentIdsRaw: (string | null)[] = Array.isArray(getJson?.plan?.selected_recipe_ids)
+        ? (getJson.plan.selected_recipe_ids as (string | null)[])
+        : [];
+
+      const base: (string | null)[] = Array.from({ length: 7 }).map((_, i) => (currentIdsRaw[i] as any) ?? null);
+
+      const existing = new Set(base.filter(Boolean) as string[]);
+      const lockedToInsert = lockedPicked.filter((id) => !existing.has(id));
+
+      if (lockedToInsert.length === 0) {
+        setStatus("All locked picks are already in Manual (no duplicates added).");
+        window.setTimeout(() => setStatus(""), 2000);
+        return;
+      }
+
+      const merged = [...base];
+      let writeIdx = 0;
+
+      for (let i = 0; i < merged.length; i++) {
+        if (merged[i] !== null) continue;
+        if (writeIdx >= lockedToInsert.length) break;
+        merged[i] = lockedToInsert[writeIdx++];
+      }
+
+      if (writeIdx < lockedToInsert.length) {
+        for (let i = 0; i < merged.length && writeIdx < lockedToInsert.length; i++) {
+          merged[i] = lockedToInsert[writeIdx++];
+        }
+      }
+
+      const postRes = await fetch("/api/meal-plans/current", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Selected Week",
+          name: "Weekly List",
           start_date: weekStartStr,
-          selected_recipe_ids: selectedIds,
+          selected_recipe_ids: merged,
         }),
       });
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Save failed");
+      const postJson = await postRes.json().catch(() => null);
+      if (!postRes.ok) throw new Error(postJson?.error || "Save failed");
 
-      setStatus("Saved ✅");
-      setTimeout(() => setStatus(""), 1500);
-    } catch {
-      setStatus("Save error");
+      setStatus("Saved locked picks ✅ (no duplicates added)");
+      window.setTimeout(() => setStatus(""), 1600);
+    } catch (e: any) {
+      setStatus(e?.message || "Save error");
+      window.setTimeout(() => setStatus(""), 2000);
     }
   }
 
-  async function syncShoppingList() {
-    try {
-      setStatus("Syncing shopping list…");
-      const selectedIds = slots.map((s) => s.recipeId).filter(Boolean) as string[];
-
-      const res = await fetch("/api/shopping-list/sync-derived", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipe_ids: selectedIds,
-          sourceUsed: "meal_plan_smart",
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Sync failed");
-
-      setStatus(`Synced ✅ (${json?.derived_count ?? 0})`);
-      setTimeout(() => setStatus(""), 2000);
-    } catch {
-      setStatus("Sync error");
-    }
-  }
-
-  const selectedCount = useMemo(() => slots.filter((s) => s.recipeId).length, [slots]);
+  const lockedCount = useMemo(() => slots.filter((s) => s.locked).length, [slots]);
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white">
-      <div className="max-w-6xl mx-auto px-4 py-10">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-6xl font-extrabold tracking-tight">Smart Meal Planning</h1>
-            <p className="mt-3 text-white/70">
-              Lock what you like, then regenerate the rest without changing locked picks.
-            </p>
-
-            <div className="mt-4 text-white/60">
-              <span className="font-semibold text-white/80">Plan:</span>{" "}
-              Selected Week{" "}
-              <span className="text-white/50">
-                ({weekStartStr} → {weekEndStr})
-              </span>
-              {status ? <span className="ml-3 text-white/40">• {status}</span> : null}
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                onClick={() => goToWeek(new Date())}
-              >
-                This week
-              </button>
-              <button
-                className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                onClick={() => goToWeek(addDays(new Date(), 7))}
-              >
-                Next week
-              </button>
-
-              <div className="flex items-center gap-2 rounded-xl bg-white/5 ring-1 ring-white/10 px-3 py-2">
-                <span className="text-white/70 text-sm">Pick a date</span>
-                <input
-                  type="date"
-                  value={draftDate}
-                  onChange={(e) => setDraftDate(e.target.value)}
-                  onBlur={applyDraftDate}
-                  className="bg-transparent text-white/90 px-2 py-1 rounded-md ring-1 ring-white/10"
-                />
-                <button
-                  className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1 text-sm"
-                  onClick={applyDraftDate}
-                >
-                  Apply
-                </button>
-                <span className="text-white/40 text-xs">(auto → Monday)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="text-white/60">{selectedCount}/7</div>
-            <button
-              onClick={generateIntoUnlocked}
-              className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-              disabled={loadingRecipes || !!error || recipes.length === 0}
-            >
-              Regenerate unlocked
-            </button>
-            <button
-              onClick={saveSelection}
-              className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-            >
-              Save selection
-            </button>
-            <button
-              onClick={syncShoppingList}
-              className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-            >
-              Sync Shopping List
-            </button>
-            <Link
-              href="/meal-planning"
-              className="rounded-xl bg-white text-black hover:bg-white/90 px-4 py-2"
-            >
-              Manual
-            </Link>
+    <div className="page">
+      <div className="pageHeader">
+        <div>
+          <h1 className="pageTitle">Smart Picks</h1>
+          <div className="pageSubhead">Lock what you like. Regenerate the rest. No day pressure.</div>
+          <div className="pageMeta">
+            Week: <b>{weekStartStr}</b> → <b>{weekEndStr}</b>
+            {status ? <span> • {status}</span> : null}
           </div>
         </div>
 
-        {/* Body */}
-        <div className="mt-10 rounded-2xl bg-white/5 ring-1 ring-white/10 p-6">
-          {loadingRecipes ? (
-            <div className="text-white/60">Loading recipes…</div>
-          ) : error ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
-              {error}
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {slots.map((slot, idx) => {
-                const r = slot.recipeId ? recipeById.get(slot.recipeId) : null;
+        <div className="actions">
+          <Link className="btn btnQuiet" href={`/meal-planning?start=${weekStartStr}`}>
+            ← Back to Weekly List
+          </Link>
+        </div>
+      </div>
 
-                return (
-                  <div
-                    key={slot.slotId} // IMPORTANT: stable key so locks don’t “move”
-                    className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-white/50 text-sm">Day {idx + 1}</div>
+      <div className="actionsRow">
+        <button type="button" className="btn btnQuiet" onClick={() => goToWeek(addDays(weekStart, -7))}>
+          ← Prev
+        </button>
+        <button type="button" className="btn btnQuiet" onClick={() => goToWeek(addDays(weekStart, 7))}>
+          Next →
+        </button>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleLock(slot.slotId)}
-                          className={`rounded-lg px-3 py-1 text-sm ${
-                            slot.locked
-                              ? "bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-400/20"
-                              : "bg-white/10 hover:bg-white/15 text-white/80"
-                          }`}
-                          disabled={!slot.recipeId}
-                          title={slot.locked ? "Unlock" : "Lock"}
-                        >
-                          {slot.locked ? "Locked" : "Lock"}
-                        </button>
+        <div style={{ flex: 1 }} />
 
-                        <button
-                          onClick={() => clearSlot(slot.slotId)}
-                          className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1 text-sm text-white/80"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </div>
+        <input className="input" style={{ width: 180 }} type="date" value={draftDate} onChange={(e) => setDraftDate(e.target.value)} />
+        <button type="button" className="btn btnQuiet" onClick={applyDraftDate}>
+          Go
+        </button>
+      </div>
 
-                    <div className="mt-3">
-                      {r ? (
-                        <>
-                          <div className="font-semibold text-lg">
-                            {r.favorite ? "⭐ " : ""}
-                            {r.title}
-                          </div>
-                          <div className="mt-2 flex items-center justify-between">
-                            <Link
-                              href={`/recipes/${r.id}`}
-                              className="text-white/70 hover:text-white underline underline-offset-4 text-sm"
-                            >
-                              View recipe
-                            </Link>
+      {error ? (
+        <div className="card" style={{ marginTop: 14, borderColor: "rgba(255,77,79,0.35)" }}>
+          <b>Error:</b> {error}
+        </div>
+      ) : null}
 
-                            <span className="text-white/40 text-xs">{r.id}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-white/60">Empty slot</div>
-                      )}
-                    </div>
+      <div className="actionsRow" style={{ marginTop: 14 }}>
+        <button
+          type="button"
+          className="btn btnPrimary"
+          onClick={regenerateUnlocked}
+          disabled={loadingRecipes || recipes.length === 0}
+        >
+          Regenerate Unlocked
+        </button>
+
+        <button type="button" className="btn btnQuiet" onClick={clearUnlocked}>
+          Clear Unlocked
+        </button>
+
+        <button type="button" className="btn btnQuiet" onClick={saveLockedToManual}>
+          Save Locked → Weekly List
+        </button>
+
+        <div style={{ flex: 1 }} />
+
+        <div className="muted">
+          Locked: <b>{lockedCount}</b> / 7
+        </div>
+      </div>
+
+      <div className="grid">
+        {loadingRecipes ? (
+          <div className="card">Loading…</div>
+        ) : recipes.length === 0 ? (
+          <div className="card">No recipes yet. Add recipes first, then come back.</div>
+        ) : (
+          slots.map((slot, idx) => {
+            const current = slot.recipeId ? recipeById.get(slot.recipeId) : undefined;
+
+            return (
+              <div key={slot.slotId} className="card cardHover">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.2 }}>
+                    Item {idx + 1} {slot.locked ? <span className="small" style={{ marginLeft: 8 }}>• Locked</span> : null}
                   </div>
-                );
-              })}
-            </div>
-          )}
 
-          <div className="mt-6 text-white/50 text-sm">
-            Tip: Lock the ones you like, then hit <span className="text-white/70">Regenerate unlocked</span>.
-            Locked picks will stay put.
-          </div>
-        </div>
+                  <button type="button" className={`btn ${slot.locked ? "btnPrimary" : "btnQuiet"}`} onClick={() => toggleLock(slot.slotId)}>
+                    {slot.locked ? "Locked" : "Lock"}
+                  </button>
+                </div>
+
+                <div className="small" style={{ marginTop: 10 }}>
+                  {current?.title ? (
+                    <>
+                      Current: <b>{current.title}</b> {current.favorite ? "★" : ""}
+                    </>
+                  ) : (
+                    "Not picked yet."
+                  )}
+                </div>
+
+                <select
+                  className="select"
+                  value={slot.recipeId ?? ""}
+                  onChange={(e) => pickRecipe(slot.slotId, e.target.value || null)}
+                  style={{ marginTop: 12 }}
+                >
+                  <option value="">(Select a recipe…)</option>
+                  {recipes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.favorite ? "★ " : ""}
+                      {r.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

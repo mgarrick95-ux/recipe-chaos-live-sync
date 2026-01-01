@@ -1,9 +1,14 @@
+// RecipeChaos MP-PAGE-v6 — meal_count slots + hydration latch + explicit clear (2025-12-28)
 // app/meal-planning/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+import BrainCapacityPrompt from "../../components/BrainCapacityPrompt";
+import { useUIPrefs } from "../../components/UIPrefsProvider";
+import { t } from "@/lib/copy";
 
 type Recipe = {
   id: string;
@@ -11,23 +16,26 @@ type Recipe = {
   favorite?: boolean | null;
 };
 
-type MealPlan = {
-  id: string;
-  name: string;
-  start_date: string; // YYYY-MM-DD
-  end_date: string; // YYYY-MM-DD
-  selected_recipe_ids: string[]; // jsonb
-};
-
 type Slot = {
   slotId: string;
   recipeId: string | null;
-  locked: boolean;
 };
 
-function uid() {
-  return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16);
-}
+type PlanResponse = {
+  ok: boolean;
+  plan?: {
+    id: string | null;
+    name: string;
+    start_date: string;
+    end_date: string;
+    meal_count?: number;
+    selected_recipe_ids: any;
+    created_at?: string;
+    updated_at?: string;
+  };
+  error?: string;
+  note?: string;
+};
 
 function toISODate(d: Date) {
   const yyyy = d.getFullYear();
@@ -36,19 +44,23 @@ function toISODate(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function startOfWeekMonday(date: Date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = (day + 6) % 7;
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
 function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
 }
 
-function startOfWeekMonday(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0 Sun
-  const diff = (day + 6) % 7; // Mon = 0
-  d.setDate(d.getDate() - diff);
-  return d;
+function uid() {
+  return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16);
 }
 
 function shuffle<T>(arr: T[]) {
@@ -60,15 +72,32 @@ function shuffle<T>(arr: T[]) {
   return a;
 }
 
+// Tiny deterministic “rotation” so it changes per week, not per refresh.
+function pickBySeed(lines: string[], seed: string) {
+  let n = 0;
+  for (let i = 0; i < seed.length; i++) n = (n * 31 + seed.charCodeAt(i)) >>> 0;
+  return lines[n % lines.length];
+}
+
+function clampMealCount(n: any) {
+  const num = typeof n === "number" ? n : typeof n === "string" ? Number(n) : NaN;
+  if (!Number.isFinite(num)) return 7;
+  const rounded = Math.floor(num);
+  return Math.max(0, Math.min(60, rounded));
+}
+
+function makeEmptySlots(count: number): Slot[] {
+  const n = clampMealCount(count);
+  return Array.from({ length: n }).map(() => ({ slotId: uid(), recipeId: null }));
+}
+
 export default function MealPlanningPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  const modeParam = (searchParams.get("mode") || "manual").toLowerCase();
-  const mode: "manual" | "smart" = modeParam === "smart" ? "smart" : "manual";
+  const { prefs, brainCapacity } = useUIPrefs();
 
   const startParam = searchParams.get("start");
-  const initialWeekStart = useMemo(() => {
+  const initialStart = useMemo(() => {
     if (startParam) {
       const parsed = new Date(`${startParam}T00:00:00`);
       if (!Number.isNaN(parsed.getTime())) return startOfWeekMonday(parsed);
@@ -76,59 +105,193 @@ export default function MealPlanningPage() {
     return startOfWeekMonday(new Date());
   }, [startParam]);
 
-  const [weekStart, setWeekStart] = useState<Date>(initialWeekStart);
+  const [weekStart, setWeekStart] = useState<Date>(initialStart);
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
-
   const weekStartStr = useMemo(() => toISODate(weekStart), [weekStart]);
   const weekEndStr = useMemo(() => toISODate(weekEnd), [weekEnd]);
 
-  const prevWeekStart = useMemo(() => addDays(weekStart, -7), [weekStart]);
-  const prevWeekEnd = useMemo(() => addDays(prevWeekStart, 6), [prevWeekStart]);
-  const prevWeekStartStr = useMemo(() => toISODate(prevWeekStart), [prevWeekStart]);
-  const prevWeekEndStr = useMemo(() => toISODate(prevWeekEnd), [prevWeekEnd]);
-
-  const [draftDate, setDraftDate] = useState<string>(toISODate(weekStart));
-
   useEffect(() => {
-    setWeekStart(initialWeekStart);
-    setDraftDate(toISODate(initialWeekStart));
-  }, [initialWeekStart]);
+    setWeekStart(initialStart);
+  }, [initialStart]);
 
-  function pushWeek(d: Date) {
+  function goToWeek(d: Date) {
     const monday = startOfWeekMonday(d);
-    router.push(`/meal-planning?mode=${mode}&start=${toISODate(monday)}`);
+    router.push(`/meal-planning?start=${toISODate(monday)}`);
   }
 
-  function applyDraftDate() {
-    const parsed = new Date(`${draftDate}T00:00:00`);
-    if (Number.isNaN(parsed.getTime())) {
-      setDraftDate(toISODate(weekStart));
-      return;
-    }
-    pushWeek(parsed);
-  }
-
-  function setMode(next: "manual" | "smart") {
-    router.push(`/meal-planning?mode=${next}&start=${weekStartStr}`);
-  }
-
-  // ---- Load recipes ----
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loadingRecipes, setLoadingRecipes] = useState(true);
   const [recipesError, setRecipesError] = useState<string | null>(null);
 
+  const [mealCount, setMealCount] = useState<number>(7);
+
+  const [slots, setSlots] = useState<Slot[]>(makeEmptySlots(7));
+
+  const [status, setStatus] = useState<string>("");
+
+  // Autosave infra
+  const savingTimer = useRef<any>(null);
+  const lastSavedPayload = useRef<string>("");
+
+  // keep “latest desired save” in a ref so we can flush on navigation/unmount
+  const latestPayloadRef = useRef<string>("");
+  const mountedRef = useRef<boolean>(false);
+
+  // hydration latch so we never autosave the initial empty slots before load completes
+  const [weekHydrated, setWeekHydrated] = useState<boolean>(false);
+
+  const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
+
+  const selectedIdsForSave = useMemo(
+    () => slots.map((s) => s.recipeId).filter(Boolean) as string[],
+    [slots]
+  );
+
+  const isWeekEmpty = selectedIdsForSave.length === 0;
+
+  const pageTitle = t("WEEKLY_TITLE", prefs, brainCapacity);
+  const emptyCopy = t("WEEKLY_EMPTY", prefs, brainCapacity);
+
+  const flavorLine = useMemo(() => {
+    if (prefs.reduceChatter) return "A weekly list. Nothing is due.";
+
+    if (brainCapacity === "very_little") {
+      return pickBySeed(
+        [
+          "Easy mode: pick one thing or pick nothing. Both count.",
+          "We’re doing “minimum viable dinner” today.",
+          "This is a list, not a contract.",
+          "No schedule. No guilt. Just options.",
+        ],
+        weekStartStr
+      );
+    }
+
+    if (brainCapacity === "some") {
+      return pickBySeed(
+        [
+          "Low-power week. Keep it simple.",
+          "Small wins only. The rest can be vibes.",
+          "A weekly list you can ignore as needed.",
+          "You’re allowed to wing this.",
+        ],
+        weekStartStr
+      );
+    }
+
+    if (prefs.tone === "spicy" && brainCapacity === "extra") {
+      return pickBySeed(
+        [
+          "Spicy mode: are you sure you can take it?",
+          "Pick a few. Lock nothing. Chaos responsibly.",
+          "This list is just suggestions wearing a trench coat.",
+          "We’re aiming for “fed,” not “impressive.”",
+        ],
+        weekStartStr
+      );
+    }
+
+    return pickBySeed(
+      [
+        "A weekly list. Not tied to days.",
+        "Pick what you want. Skip what you don’t.",
+        "Nothing here is a rule.",
+        "This is a list, not a schedule.",
+      ],
+      weekStartStr
+    );
+  }, [prefs.reduceChatter, prefs.tone, brainCapacity, weekStartStr]);
+
+  function setCalmStatus(msg: string, autoClearMs?: number) {
+    if (prefs.reduceChatter) {
+      setStatus(msg.length > 18 ? t("GENERIC_UPDATED", prefs, brainCapacity) : msg);
+    } else {
+      setStatus(msg);
+    }
+    if (autoClearMs) window.setTimeout(() => setStatus(""), autoClearMs);
+  }
+
+  async function saveWeekNow(opts?: { silent?: boolean; keepalive?: boolean; explicitClear?: boolean }) {
+    const silent = Boolean(opts?.silent);
+    const keepalive = Boolean(opts?.keepalive);
+    const explicitClear = Boolean(opts?.explicitClear);
+
+    const payloadStr = latestPayloadRef.current;
+    if (!payloadStr) return;
+    if (payloadStr === lastSavedPayload.current) return;
+
+    const parsed = JSON.parse(payloadStr) as {
+      start_date: string;
+      selected_recipe_ids: string[];
+      meal_count: number;
+    };
+
+    try {
+      if (!silent) setCalmStatus("Saving…");
+
+      const res = await fetch(
+        "/api/meal-plans/current",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: t("WEEKLY_TITLE", prefs, brainCapacity),
+            start_date: parsed.start_date,
+            meal_count: parsed.meal_count,
+            selected_recipe_ids: parsed.selected_recipe_ids,
+            explicit_clear: explicitClear === true,
+          }),
+          keepalive,
+        } as any
+      );
+
+      const json = (await res.json().catch(() => null)) as PlanResponse | null;
+      if (!res.ok) throw new Error((json as any)?.error || "Save failed");
+
+      // Treat "ignored empty save" as done for this payload to prevent retry spam.
+      lastSavedPayload.current = payloadStr;
+
+      if (!silent && mountedRef.current) {
+        const brainMsg =
+          brainCapacity === "very_little"
+            ? "Saved."
+            : brainCapacity === "some"
+            ? "Saved."
+            : brainCapacity === "extra"
+            ? "Saved."
+            : "Saved.";
+
+        setCalmStatus(prefs.reduceChatter ? "Saved." : brainMsg, 900);
+      }
+    } catch (e: any) {
+      if (!silent && mountedRef.current) {
+        setStatus(e?.message || "Save error");
+      }
+    }
+  }
+
+  // mounted guard
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Load recipes
   useEffect(() => {
     let alive = true;
-    async function load() {
+
+    async function loadRecipes() {
       try {
         setLoadingRecipes(true);
         setRecipesError(null);
 
         const res = await fetch("/api/recipes", { cache: "no-store" });
         const json = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(json?.error || "Failed to load recipes");
+        if (!res.ok) throw new Error((json as any)?.error || "Failed to load recipes");
 
-        const list: Recipe[] = Array.isArray(json) ? json : json?.recipes ?? [];
+        const list: Recipe[] = Array.isArray(json) ? (json as any) : (json as any)?.recipes ?? [];
         if (alive) setRecipes(list);
       } catch (e: any) {
         if (alive) setRecipesError(e?.message || "Failed to load recipes");
@@ -136,730 +299,363 @@ export default function MealPlanningPage() {
         if (alive) setLoadingRecipes(false);
       }
     }
-    load();
+
+    loadRecipes();
     return () => {
       alive = false;
     };
   }, []);
 
-  const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
-  const favoriteIds = useMemo(
-    () => new Set(recipes.filter((r) => r.favorite).map((r) => r.id)),
-    [recipes]
-  );
-
-  // ---- Shared week memory ----
-  const [plan, setPlan] = useState<MealPlan | null>(null);
-  const [prevPlan, setPrevPlan] = useState<MealPlan | null>(null);
-  const [planStatus, setPlanStatus] = useState<string>("");
-
-  async function fetchPlan(start: string) {
-    const res = await fetch(`/api/meal-plans/current?start=${start}`, { cache: "no-store" });
-    const json = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(json?.error || "Failed to load week");
-    return json?.plan ?? null;
-  }
-
-  async function loadPlans() {
-    try {
-      setPlanStatus("Loading week…");
-      const [p, pp] = await Promise.allSettled([fetchPlan(weekStartStr), fetchPlan(prevWeekStartStr)]);
-
-      const current = p.status === "fulfilled" ? p.value : null;
-      const previous = pp.status === "fulfilled" ? pp.value : null;
-
-      setPlan(current);
-      setPrevPlan(previous);
-      setPlanStatus("");
-    } catch {
-      setPlan(null);
-      setPrevPlan(null);
-      setPlanStatus("Week error");
-    }
-  }
-
+  // Load plan for this week
   useEffect(() => {
-    loadPlans();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStartStr, prevWeekStartStr]);
+    let alive = true;
 
-  const selectedIds = useMemo(() => {
-    const ids = (plan?.selected_recipe_ids ?? []) as any;
-    return Array.isArray(ids) ? (ids.filter(Boolean) as string[]) : [];
-  }, [plan]);
+    async function loadWeek() {
+      try {
+        if (alive) setWeekHydrated(false);
 
-  const prevSelectedIds = useMemo(() => {
-    const ids = (prevPlan?.selected_recipe_ids ?? []) as any;
-    return Array.isArray(ids) ? (ids.filter(Boolean) as string[]) : [];
-  }, [prevPlan]);
+        setCalmStatus(prefs.reduceChatter ? "Loading…" : "Loading week…");
 
-  async function savePlan(nextSelectedIds: string[]) {
-    try {
-      setPlanStatus("Saving…");
-      const res = await fetch("/api/meal-plans/current", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Selected Week",
+        const res = await fetch(`/api/meal-plans/current?start=${weekStartStr}`, {
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => null)) as PlanResponse | null;
+        if (!res.ok) throw new Error(json?.error || "Failed to load week");
+
+        const plan = json?.plan;
+        const idsRaw: any = plan?.selected_recipe_ids ?? [];
+        const ids: string[] = Array.isArray(idsRaw) ? idsRaw.filter((x) => typeof x === "string") : [];
+
+        const mc = clampMealCount(plan?.meal_count ?? 7);
+
+        if (!alive) return;
+
+        setMealCount(mc);
+
+        setSlots(() => {
+          const next = makeEmptySlots(mc);
+          for (let i = 0; i < next.length; i++) next[i].recipeId = ids[i] ?? null;
+          return next;
+        });
+
+        // Seed save refs to loaded plan
+        const loadedPayload = JSON.stringify({
           start_date: weekStartStr,
-          end_date: weekEndStr,
-          selected_recipe_ids: nextSelectedIds,
-        }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Save failed");
+          meal_count: mc,
+          selected_recipe_ids: ids.filter(Boolean),
+        });
+        latestPayloadRef.current = loadedPayload;
+        lastSavedPayload.current = loadedPayload;
 
-      await loadPlans();
-      setPlanStatus("Saved ✅");
-      setTimeout(() => setPlanStatus(""), 1200);
-    } catch {
-      setPlanStatus("Save error");
-    }
-  }
-
-  async function reuseLastWeek(overwrite: boolean) {
-    if (!prevSelectedIds.length) return;
-
-    if (!overwrite) {
-      const merged = Array.from(new Set([...selectedIds, ...prevSelectedIds]));
-      await savePlan(merged);
-      return;
+        setStatus("");
+        setWeekHydrated(true);
+      } catch (e: any) {
+        if (alive) setStatus(e?.message || "Week load error");
+      }
     }
 
-    await savePlan(prevSelectedIds);
+    loadWeek();
+    return () => {
+      alive = false;
+    };
+  }, [weekStartStr, prefs.reduceChatter]);
+
+  // When mealCount changes via UI, resize slots while preserving existing selections.
+  function applyMealCount(nextCount: number) {
+    const mc = clampMealCount(nextCount);
+
+    setMealCount(mc);
+    setSlots((prev) => {
+      const next: Slot[] = makeEmptySlots(mc);
+      for (let i = 0; i < Math.min(prev.length, next.length); i++) {
+        next[i].recipeId = prev[i]?.recipeId ?? null;
+      }
+      return next;
+    });
   }
 
-  async function clearThisWeek() {
-    await savePlan([]);
+  function autoFillWeek() {
+    const favorites = recipes.filter((r) => r.favorite);
+    const others = recipes.filter((r) => !r.favorite);
+    const pool = [...shuffle(favorites), ...shuffle(others)];
+
+    setSlots((prev) => {
+      const next = prev.map((s) => ({ ...s }));
+      for (let i = 0; i < next.length; i++) next[i].recipeId = pool[i]?.id ?? null;
+      return next;
+    });
   }
 
-  async function syncShoppingListFromPlan() {
+  async function clearWeek() {
+    // Intentional + persistent clear
+    setSlots((prev) => prev.map((s) => ({ ...s, recipeId: null })));
+
+    const clearedPayload = JSON.stringify({
+      start_date: weekStartStr,
+      meal_count: mealCount,
+      selected_recipe_ids: [],
+    });
+    latestPayloadRef.current = clearedPayload;
+
+    await saveWeekNow({ silent: prefs.reduceChatter, keepalive: false, explicitClear: true });
+    if (!prefs.reduceChatter) setCalmStatus("Cleared.", 800);
+  }
+
+  function moveSlot(idx: number, dir: -1 | 1) {
+    setSlots((prev) => {
+      const next = [...prev];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  }
+
+  // Auto-save (debounced) any time slots or mealCount change — AFTER hydration
+  useEffect(() => {
+    if (!weekStartStr) return;
+    if (!weekHydrated) return;
+
+    const payload = JSON.stringify({
+      start_date: weekStartStr,
+      meal_count: mealCount,
+      selected_recipe_ids: selectedIdsForSave,
+    });
+
+    latestPayloadRef.current = payload;
+
+    if (payload === lastSavedPayload.current) return;
+
+    if (savingTimer.current) clearTimeout(savingTimer.current);
+
+    savingTimer.current = setTimeout(async () => {
+      await saveWeekNow({ silent: false, keepalive: false, explicitClear: false });
+    }, 450);
+
+    return () => {
+      if (savingTimer.current) clearTimeout(savingTimer.current);
+    };
+  }, [slots, mealCount, weekStartStr, selectedIdsForSave, weekHydrated, prefs, brainCapacity]);
+
+  // Flush pending save on unmount/navigation away — BUT NOT BEFORE hydration
+  useEffect(() => {
+    return () => {
+      try {
+        if (savingTimer.current) clearTimeout(savingTimer.current);
+      } catch {}
+      if (!weekHydrated) return;
+      void saveWeekNow({ silent: true, keepalive: true, explicitClear: false });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekHydrated]);
+
+  async function syncShoppingList() {
     try {
-      setPlanStatus("Syncing…");
+      setCalmStatus(prefs.reduceChatter ? "Syncing…" : "Sending to shopping list…");
+
       const res = await fetch("/api/shopping-list/sync-derived", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipe_ids: selectedIds,
-          sourceUsed: "meal_plan",
-        }),
+        body: JSON.stringify({ recipe_ids: selectedIdsForSave }),
       });
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Sync failed");
 
-      setPlanStatus(`Synced ✅ (${json?.derived_count ?? 0})`);
-      setTimeout(() => setPlanStatus(""), 1500);
-    } catch {
-      setPlanStatus("Sync error");
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((json as any)?.error || "Sync failed");
+
+      setCalmStatus(prefs.reduceChatter ? "Updated." : "Sent to your shopping list.", 1400);
+    } catch (e: any) {
+      setStatus(`${e?.message || "Sync error"}. Your list is unchanged.`);
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white">
-      <div className="max-w-6xl mx-auto px-4 py-10">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-6xl font-extrabold tracking-tight">Meal Planning</h1>
-            <p className="mt-3 text-white/70">
-              One plan per week. Manual + Smart are just modes. Both save to the same week memory.
-            </p>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
+      <BrainCapacityPrompt />
 
-            <div className="mt-4 text-white/60">
-              <span className="font-semibold text-white/80">Plan:</span>{" "}
-              Selected Week{" "}
-              <span className="text-white/50">
-                ({weekStartStr} → {weekEndStr})
-              </span>
-              {planStatus ? <span className="ml-3 text-white/40">• {planStatus}</span> : null}
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                onClick={() => pushWeek(new Date())}
-              >
-                This week
-              </button>
-              <button
-                className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                onClick={() => pushWeek(addDays(new Date(), 7))}
-              >
-                Next week
-              </button>
-
-              <div className="flex items-center gap-2 rounded-xl bg-white/5 ring-1 ring-white/10 px-3 py-2">
-                <span className="text-white/70 text-sm">Pick a date</span>
-                <input
-                  type="date"
-                  value={draftDate}
-                  onChange={(e) => setDraftDate(e.target.value)}
-                  onBlur={applyDraftDate}
-                  className="bg-transparent text-white/90 px-2 py-1 rounded-md ring-1 ring-white/10"
-                />
-                <button
-                  className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1 text-sm"
-                  onClick={applyDraftDate}
-                >
-                  Apply
-                </button>
-                <span className="text-white/40 text-xs">(auto → Monday)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Mode + actions */}
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => setMode("manual")}
-              className={`rounded-xl px-4 py-2 ${
-                mode === "manual" ? "bg-white text-black" : "bg-white/10 hover:bg-white/15"
-              }`}
-            >
-              Manual
-            </button>
-
-            <button
-              onClick={() => setMode("smart")}
-              className={`rounded-xl px-4 py-2 ${
-                mode === "smart" ? "bg-white text-black" : "bg-white/10 hover:bg-white/15"
-              }`}
-            >
-              Smart mode
-            </button>
-
-            <button
-              onClick={syncShoppingListFromPlan}
-              className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-              disabled={selectedIds.length === 0}
-              title={selectedIds.length === 0 ? "Select recipes first" : "Sync Shopping List"}
-            >
-              Sync Shopping List
-            </button>
-
-            <Link href="/shopping-list" className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2">
-              Shopping List
-            </Link>
-          </div>
-        </div>
-
-        {/* Week Snapshot */}
-        <div className="mt-8 rounded-2xl bg-white/5 ring-1 ring-white/10 p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold">Week Snapshot</h2>
-              <p className="mt-2 text-white/60">
-                Gentle memory, not pressure. This is here so you don’t have to hold it in your head.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push(`/meal-planning?mode=${mode}&start=${prevWeekStartStr}`)}
-                className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-              >
-                View last week
-              </button>
-              <button
-                onClick={clearThisWeek}
-                className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-              >
-                Clear this week
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-              <div className="text-white/50 text-sm">This week</div>
-              <div className="mt-2 text-3xl font-extrabold">{selectedIds.length}</div>
-              <div className="mt-1 text-white/60 text-sm">recipes selected</div>
-            </div>
-
-            <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-              <div className="text-white/50 text-sm">Last week</div>
-              <div className="mt-2 text-3xl font-extrabold">{prevSelectedIds.length}</div>
-              <div className="mt-1 text-white/60 text-sm">
-                recipes selected{" "}
-                <span className="text-white/40">
-                  ({prevWeekStartStr} → {prevWeekEndStr})
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-              <div className="text-white/50 text-sm">Quick actions</div>
-
-              {prevSelectedIds.length === 0 ? (
-                <div className="mt-3 text-white/60 text-sm">No saved plan found for last week. (Totally fine.)</div>
-              ) : (
-                <div className="mt-3 flex flex-col gap-2">
-                  <button
-                    onClick={() => reuseLastWeek(true)}
-                    className="rounded-xl bg-white text-black hover:bg-white/90 px-4 py-2"
-                    title="Replaces this week with last week's selections"
-                  >
-                    Reuse last week (overwrite)
-                  </button>
-
-                  <button
-                    onClick={() => reuseLastWeek(false)}
-                    className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                    title="Adds last week's recipes to this week (no duplicates)"
-                  >
-                    Add last week (merge)
-                  </button>
-
-                  <div className="text-white/40 text-xs mt-1">You can always remove anything after.</div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Mode content */}
-        <div className="mt-10">
-          {mode === "manual" ? (
-            <ManualMode
-              recipes={recipes}
-              loading={loadingRecipes}
-              error={recipesError}
-              favoriteIds={favoriteIds}
-              selectedIds={selectedIds}
-              recipeById={recipeById}
-              onSave={savePlan}
-            />
-          ) : (
-            <SmartMode
-              recipes={recipes}
-              loading={loadingRecipes}
-              error={recipesError}
-              favoriteIds={favoriteIds}
-              selectedIds={selectedIds}
-              recipeById={recipeById}
-              onSave={savePlan}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ------------------- MANUAL MODE -------------------
-
-function ManualMode(props: {
-  recipes: Recipe[];
-  loading: boolean;
-  error: string | null;
-  favoriteIds: Set<string>;
-  selectedIds: string[];
-  recipeById: Map<string, Recipe>;
-  onSave: (ids: string[]) => Promise<void>;
-}) {
-  const { recipes, loading, error, favoriteIds, selectedIds, recipeById, onSave } = props;
-
-  const [query, setQuery] = useState("");
-  const [showAll, setShowAll] = useState(false);
-  const [localSelected, setLocalSelected] = useState<string[]>(selectedIds);
-
-  useEffect(() => {
-    setLocalSelected(selectedIds);
-  }, [selectedIds]);
-
-  const suggested = useMemo(() => {
-    const favs = recipes.filter((r) => favoriteIds.has(r.id));
-    const nonFavs = recipes.filter((r) => !favoriteIds.has(r.id));
-    const randomNonFavs = shuffle(nonFavs).slice(0, 30);
-    const combined = [...favs, ...randomNonFavs];
-
-    const seen = new Set<string>();
-    return combined.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
-  }, [recipes, favoriteIds]);
-
-  const list = useMemo(() => {
-    const base = showAll ? recipes : suggested;
-    const q = query.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter((r) => r.title.toLowerCase().includes(q));
-  }, [recipes, suggested, query, showAll]);
-
-  function toggle(id: string) {
-    setLocalSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-
-  async function save() {
-    await onSave(localSelected);
-  }
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-      <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-bold">Manual pick</h2>
-            <p className="text-white/60 mt-1">Default is Suggested (not all recipes). Toggle All if you want the full list.</p>
-          </div>
-
-          <button
-            onClick={() => setShowAll((s) => !s)}
-            className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2"
-          >
-            {showAll ? "Suggested only" : "Show all recipes"}
-          </button>
-        </div>
-
-        <div className="mt-4 flex items-center gap-3">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search recipes…"
-            className="w-full rounded-xl bg-white/5 ring-1 ring-white/10 px-4 py-3 text-white placeholder:text-white/40"
-          />
-          <button onClick={save} className="rounded-xl bg-white text-black hover:bg-white/90 px-4 py-3">
-            Save
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="mt-6 text-white/60">Loading recipes…</div>
-        ) : error ? (
-          <div className="mt-6 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{error}</div>
-        ) : (
-          <div className="mt-6 space-y-3">
-            {list.map((r) => {
-              const checked = localSelected.includes(r.id);
-              return (
-                <div
-                  key={r.id}
-                  className="rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 flex items-center justify-between gap-3"
-                >
-                  <label className="flex items-center gap-3 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggle(r.id)}
-                      className="h-5 w-5"
-                    />
-                    <span className="truncate">
-                      {r.favorite ? "⭐ " : ""}
-                      {r.title}
-                    </span>
-                  </label>
-
-                  <Link
-                    href={`/recipes/${r.id}`}
-                    className="text-white/70 hover:text-white underline underline-offset-4 text-sm shrink-0"
-                  >
-                    View
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-6">
-        <h2 className="text-2xl font-bold">This week</h2>
-        <p className="text-white/60 mt-1">This is shared with Smart mode.</p>
-
-        <div className="mt-5 space-y-3">
-          {localSelected.length === 0 ? (
-            <div className="text-white/60">No recipes selected yet.</div>
-          ) : (
-            localSelected.map((id) => {
-              const r = recipeById.get(id);
-              return (
-                <div
-                  key={id}
-                  className="rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 flex items-center justify-between gap-3"
-                >
-                  <span className="truncate">{r ? r.title : id}</span>
-                  <button
-                    onClick={() => setLocalSelected((prev) => prev.filter((x) => x !== id))}
-                    className="rounded-xl bg-white/10 hover:bg-white/15 px-3 py-1 text-sm"
-                  >
-                    Remove
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div className="mt-5">
-          <button onClick={save} className="w-full rounded-xl bg-white text-black hover:bg-white/90 px-4 py-3">
-            Save selection
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ------------------- SMART MODE (FIXED UX) -------------------
-
-function SmartMode(props: {
-  recipes: Recipe[];
-  loading: boolean;
-  error: string | null;
-  favoriteIds: Set<string>;
-  selectedIds: string[];
-  recipeById: Map<string, Recipe>;
-  onSave: (ids: string[]) => Promise<void>;
-}) {
-  const { recipes, loading, error, favoriteIds, selectedIds, recipeById, onSave } = props;
-
-  // You can reduce/increase how many meals you want
-  const [mealCount, setMealCount] = useState<number>(7);
-
-  // Smart generates only "slots" — it does NOT show the full recipe list.
-  const [slots, setSlots] = useState<Slot[]>(() =>
-    Array.from({ length: 7 }).map(() => ({ slotId: uid(), recipeId: null, locked: false }))
-  );
-
-  // Keep mealCount in sync with saved selection (no surprises)
-  useEffect(() => {
-    const n = Math.max(1, Math.min(14, selectedIds.length || 7));
-    setMealCount(n);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds.join("|")]);
-
-  // Ensure slots length matches mealCount while preserving existing/locked picks
-  useEffect(() => {
-    setSlots((prev) => {
-      const next = [...prev];
-
-      if (next.length < mealCount) {
-        const add = Array.from({ length: mealCount - next.length }).map(() => ({
-          slotId: uid(),
-          recipeId: null,
-          locked: false,
-        }));
-        return [...next, ...add];
-      }
-
-      if (next.length > mealCount) {
-        // If we shrink, keep the first N slots. (Simple + predictable)
-        return next.slice(0, mealCount);
-      }
-
-      return next;
-    });
-  }, [mealCount]);
-
-  // Seed slots from saved plan whenever selectedIds changes
-  useEffect(() => {
-    setSlots((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      const lockedIds = new Set<string>();
-      for (const s of next) if (s.locked && s.recipeId) lockedIds.add(s.recipeId);
-
-      let idx = 0;
-      for (const s of next) {
-        if (s.locked) continue;
-        while (idx < selectedIds.length && lockedIds.has(selectedIds[idx])) idx++;
-        s.recipeId = idx < selectedIds.length ? selectedIds[idx] : s.recipeId;
-        idx++;
-      }
-      return next;
-    });
-  }, [selectedIds]);
-
-  function buildCandidatePool(exclude: Set<string>) {
-    const favs = recipes.filter((r) => favoriteIds.has(r.id) && !exclude.has(r.id));
-    const others = recipes.filter((r) => !favoriteIds.has(r.id) && !exclude.has(r.id));
-    return [...shuffle(favs), ...shuffle(others)];
-  }
-
-  function regenerateUnlocked() {
-    setSlots((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      const used = new Set<string>();
-      for (const s of next) if (s.locked && s.recipeId) used.add(s.recipeId);
-
-      const pool = buildCandidatePool(used);
-      let poolIdx = 0;
-
-      for (const s of next) {
-        if (s.locked) continue;
-        const pick = pool[poolIdx++];
-        s.recipeId = pick ? pick.id : null;
-      }
-
-      return next;
-    });
-  }
-
-  function toggleLock(slotId: string) {
-    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, locked: !s.locked } : s)));
-  }
-
-  function clearSlot(slotId: string) {
-    setSlots((prev) =>
-      prev.map((s) => (s.slotId === slotId ? { ...s, recipeId: null, locked: false } : s))
-    );
-  }
-
-  async function save() {
-    const ids = slots.map((s) => s.recipeId).filter(Boolean) as string[];
-    await onSave(ids);
-  }
-
-  const filled = useMemo(() => slots.filter((s) => s.recipeId).length, [slots]);
-
-  return (
-    <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h2 className="text-2xl font-bold">Smart mode</h2>
-          <p className="text-white/60 mt-1">
-            Choose how many meals you want. Lock what you like, regenerate the rest, then Save.
-          </p>
+          <h1 style={{ fontSize: 46, margin: 0 }}>{pageTitle}</h1>
+          <p style={{ marginTop: 10, fontSize: 16, opacity: 0.85 }}>{flavorLine}</p>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <div className="rounded-xl bg-white/5 ring-1 ring-white/10 px-4 py-3 flex items-center gap-3">
-              <span className="text-white/70 text-sm">Meals</span>
-
-              <button
-                className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1"
-                onClick={() => setMealCount((n) => Math.max(1, n - 1))}
-                disabled={mealCount <= 1}
-              >
-                −
-              </button>
-
-              <div className="min-w-[2rem] text-center font-semibold">{mealCount}</div>
-
-              <button
-                className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1"
-                onClick={() => setMealCount((n) => Math.min(14, n + 1))}
-                disabled={mealCount >= 14}
-              >
-                +
-              </button>
-
-              <span className="text-white/40 text-xs">({filled} filled)</span>
-            </div>
-
-            <button
-              onClick={regenerateUnlocked}
-              className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-3"
-              disabled={loading || !!error || recipes.length === 0}
-            >
-              Regenerate unlocked
-            </button>
-
-            <button
-              onClick={save}
-              className="rounded-xl bg-white text-black hover:bg-white/90 px-4 py-3"
-            >
-              Save
-            </button>
+          <div style={{ marginTop: 8, opacity: 0.75 }}>
+            Week: <b>{weekStartStr}</b> → <b>{weekEndStr}</b>
+            {status ? <span style={{ marginLeft: 10 }}>• {status}</span> : null}
           </div>
         </div>
 
-        <div className="text-white/50 text-sm">
-          Smart mode does not show all recipes. It only shows your generated picks.
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => goToWeek(addDays(weekStart, -7))} style={btnGhost} type="button">
+            ← Prev
+          </button>
+          <button onClick={() => goToWeek(new Date())} style={btnGhost} type="button">
+            This week
+          </button>
+          <button onClick={() => goToWeek(addDays(weekStart, 7))} style={btnGhost} type="button">
+            Next →
+          </button>
+
+          <Link href={`/meal-planning/auto?start=${weekStartStr}`} style={btnDarkLink}>
+            Smart
+          </Link>
         </div>
       </div>
 
-      {loading ? (
-        <div className="mt-6 text-white/60">Loading recipes…</div>
-      ) : error ? (
-        <div className="mt-6 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{error}</div>
+      <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={clearWeek} style={btnGhost} type="button">
+          Clear
+        </button>
+
+        <button
+          onClick={autoFillWeek}
+          style={btnGhost}
+          disabled={loadingRecipes || !!recipesError || recipes.length === 0}
+          type="button"
+        >
+          Auto-fill
+        </button>
+
+        <button onClick={syncShoppingList} style={btnGhost} type="button" disabled={selectedIdsForSave.length === 0}>
+          Send to shopping list
+        </button>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 6 }}>
+          <span style={{ opacity: 0.8 }}>Meals:</span>
+          <button
+            type="button"
+            style={miniBtn}
+            onClick={() => applyMealCount(mealCount - 1)}
+            disabled={!weekHydrated || mealCount <= 0}
+            title="Fewer meals"
+          >
+            −
+          </button>
+          <div style={{ minWidth: 34, textAlign: "center", fontWeight: 800 }}>{mealCount}</div>
+          <button
+            type="button"
+            style={miniBtn}
+            onClick={() => applyMealCount(mealCount + 1)}
+            disabled={!weekHydrated || mealCount >= 60}
+            title="More meals"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      {isWeekEmpty ? (
+        <div style={{ marginTop: 18, opacity: 0.78, whiteSpace: "pre-line" }}>{emptyCopy}</div>
+      ) : null}
+
+      {loadingRecipes ? (
+        <div style={{ marginTop: 18, opacity: 0.7 }}>Loading…</div>
+      ) : recipesError ? (
+        <div style={{ marginTop: 18, color: "salmon" }}>{recipesError}</div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          style={{
+            marginTop: 18,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: 14,
+          }}
+        >
           {slots.map((slot, idx) => {
             const r = slot.recipeId ? recipeById.get(slot.recipeId) : null;
 
             return (
-              <div key={slot.slotId} className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="text-white/50 text-sm">Pick {idx + 1}</div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleLock(slot.slotId)}
-                      className={`rounded-lg px-3 py-1 text-sm ${
-                        slot.locked
-                          ? "bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-400/20"
-                          : "bg-white/10 hover:bg-white/15 text-white/80"
-                      }`}
-                      disabled={!slot.recipeId}
-                    >
-                      {slot.locked ? "Locked" : "Lock"}
+              <div key={slot.slotId} style={card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>Meal {idx + 1}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => moveSlot(idx, -1)} style={miniBtn} title="Move up" type="button">
+                      ↑
                     </button>
-
-                    <button
-                      onClick={() => clearSlot(slot.slotId)}
-                      className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1 text-sm text-white/80"
-                    >
-                      Clear
+                    <button onClick={() => moveSlot(idx, 1)} style={miniBtn} title="Move down" type="button">
+                      ↓
                     </button>
                   </div>
                 </div>
 
-                <div className="mt-3">
-                  {r ? (
-                    <>
-                      <div className="font-semibold text-lg">
-                        {r.favorite ? "⭐ " : ""}
-                        {r.title}
-                      </div>
+                <select
+                  value={slot.recipeId ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value || null;
+                    setSlots((prev) =>
+                      prev.map((s) => (s.slotId === slot.slotId ? { ...s, recipeId: value } : s))
+                    );
+                  }}
+                  style={select}
+                >
+                  <option value="">{prefs.reduceChatter ? "(none)" : "— none —"}</option>
+                  {recipes.map((rec) => (
+                    <option key={rec.id} value={rec.id}>
+                      {rec.favorite ? "★ " : ""}
+                      {rec.title}
+                    </option>
+                  ))}
+                </select>
 
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <Link
-                          href={`/recipes/${r.id}`}
-                          className="text-white/70 hover:text-white underline underline-offset-4 text-sm"
-                        >
-                          View recipe
-                        </Link>
-
-                        <button
-                          onClick={() => {
-                            // quick single-slot regenerate (only this slot) without touching locks
-                            setSlots((prev) => {
-                              const next = prev.map((s) => ({ ...s }));
-                              const target = next.find((s) => s.slotId === slot.slotId);
-                              if (!target || target.locked) return next;
-
-                              const used = new Set<string>();
-                              for (const s of next) {
-                                if (s.slotId === slot.slotId) continue;
-                                if (s.recipeId) used.add(s.recipeId);
-                              }
-                              const pool = (() => {
-                                const favs = recipes.filter((rr) => favoriteIds.has(rr.id) && !used.has(rr.id));
-                                const others = recipes.filter((rr) => !favoriteIds.has(rr.id) && !used.has(rr.id));
-                                return [...shuffle(favs), ...shuffle(others)];
-                              })();
-
-                              const pick = pool[0];
-                              target.recipeId = pick ? pick.id : null;
-                              return next;
-                            });
-                          }}
-                          className="rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1 text-sm"
-                        >
-                          Swap
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-white/60">Empty slot</div>
-                  )}
-                </div>
+                {r ? (
+                  <div style={{ marginTop: 10, opacity: 0.85 }}>
+                    <Link href={`/recipes/${r.id}`} style={{ textDecoration: "underline" }}>
+                      View recipe
+                    </Link>
+                    {!prefs.reduceChatter ? (
+                      <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.6 }}>{r.id}</span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             );
           })}
         </div>
       )}
-
-      <div className="mt-6 text-white/50 text-sm">
-        Tip: Set meals to 4 or 5 if you want breathing room. Lock what feels right. Swap just one pick if needed.
-      </div>
     </div>
   );
 }
+
+const btnGhost: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid var(--border)",
+  background: "var(--chip)",
+  color: "var(--text)",
+  cursor: "pointer",
+};
+
+const btnDarkLink: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid var(--border)",
+  background: "rgba(255,255,255,0.14)",
+  color: "var(--text)",
+  textDecoration: "none",
+};
+
+const card: React.CSSProperties = {
+  border: "1px solid var(--border)",
+  borderRadius: 16,
+  padding: 16,
+  background: "var(--card)",
+};
+
+const select: React.CSSProperties = {
+  width: "100%",
+  marginTop: 10,
+  padding: "12px 12px",
+  borderRadius: 12,
+  border: "1px solid var(--border)",
+  fontSize: 16,
+  background: "rgba(255,255,255,0.06)",
+  color: "var(--text)",
+};
+
+const miniBtn: React.CSSProperties = {
+  width: 36,
+  height: 36,
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  background: "rgba(255,255,255,0.06)",
+  color: "var(--text)",
+  cursor: "pointer",
+};

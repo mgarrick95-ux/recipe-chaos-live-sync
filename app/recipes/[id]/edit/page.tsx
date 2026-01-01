@@ -1,100 +1,211 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { toStringArray } from "../../../../lib/ingredientMatch";
-import { supabase } from "@/lib/supabaseClient";
 
 type Recipe = {
   id: string;
   title: string;
   description?: string | null;
-  tags?: string[] | string | null;
-  favorite?: boolean | null;
+  tags?: any;
   serves?: number | null;
-  servings?: number | null;
   prep_minutes?: number | null;
   cook_minutes?: number | null;
   ingredients?: any;
   instructions?: any;
   steps?: any;
-  notes?: string | null;
+
+  image_url?: string | null; // may NOT exist in DB
+  imageUrl?: string | null;
+  photo_url?: string | null;
+  cover_image_url?: string | null;
+  image?: string | null;
+  photo?: string | null;
 };
 
-function linesToArray(s: string): string[] {
-  return s
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
+function normalizeToStringArray(value: unknown): string[] {
+  if (!value) return [];
+
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (!s) return [];
+    const parts = s.includes("\n") ? s.split("\n") : s.split(",");
+    return parts.map((p) => p.trim()).filter(Boolean);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => {
+        if (v == null) return "";
+        if (typeof v === "string") return v;
+        if (typeof v === "number" || typeof v === "boolean") return String(v);
+
+        if (typeof v === "object") {
+          const obj = v as any;
+          return obj.name ?? obj.text ?? obj.ingredient ?? obj.item ?? obj.value ?? "";
+        }
+
+        return String(v);
+      })
+      .map((s) => String(s).trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "object") {
+    const obj = value as any;
+    const maybe = obj.ingredients ?? obj.items ?? obj.list ?? obj.text ?? null;
+    if (maybe) return normalizeToStringArray(maybe);
+  }
+
+  return [];
 }
 
 function arrayToLines(arr: string[]): string {
-  return (arr ?? []).join("\n");
+  return arr.join("\n");
 }
 
-export default function RecipeEditPage({ params }: { params: { id: string } }) {
+function tagsToCsv(tags: unknown): string {
+  const arr = normalizeToStringArray(tags);
+  return arr.join(", ");
+}
+
+function csvToTags(text: string): string[] {
+  return text
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+type ImageFieldKey =
+  | "cover_image_url"
+  | "photo_url"
+  | "image"
+  | "photo"
+  | "imageUrl"
+  | "image_url";
+
+function detectExistingImageFieldKey(r: any): ImageFieldKey | null {
+  const candidates: ImageFieldKey[] = [
+    "cover_image_url",
+    "photo_url",
+    "image",
+    "photo",
+    "imageUrl",
+    "image_url",
+  ];
+
+  for (const key of candidates) {
+    if (Object.prototype.hasOwnProperty.call(r, key)) return key;
+  }
+  return null;
+}
+
+function getImageValue(r: any): string {
+  return (
+    r?.cover_image_url ||
+    r?.photo_url ||
+    r?.image ||
+    r?.photo ||
+    r?.imageUrl ||
+    r?.image_url ||
+    ""
+  );
+}
+
+export default function EditRecipePage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const id = params.id;
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [original, setOriginal] = useState<Recipe | null>(null);
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [imageFieldKey, setImageFieldKey] = useState<ImageFieldKey | null>(null);
 
-  // form fields
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [tagsText, setTagsText] = useState(""); // comma separated
-  const [serves, setServes] = useState<string>(""); // keep as string for input
-  const [prepMinutes, setPrepMinutes] = useState<string>("");
-  const [cookMinutes, setCookMinutes] = useState<string>("");
+  const [tagsText, setTagsText] = useState("");
+  const [servesText, setServesText] = useState("");
+  const [prepText, setPrepText] = useState("");
+  const [cookText, setCookText] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [ingredientsText, setIngredientsText] = useState("");
+  const [instructionsText, setInstructionsText] = useState("");
 
-  const [ingredientsText, setIngredientsText] = useState(""); // one per line
-  const [instructionsText, setInstructionsText] = useState(""); // one per line
-  const [notes, setNotes] = useState("");
+  const canSave = useMemo(() => title.trim().length > 0, [title]);
 
-  // Load recipe
+  const pillBase: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px 18px",
+    borderRadius: "999px",
+    fontWeight: 700,
+    fontSize: "15px",
+    textDecoration: "none",
+    lineHeight: 1,
+    cursor: "pointer",
+    userSelect: "none",
+    border: "1px solid rgba(255,255,255,0.14)",
+  };
+
+  const pillGhost: React.CSSProperties = {
+    ...pillBase,
+    background: "rgba(255,255,255,0.08)",
+    color: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(8px)",
+  };
+
+  const pillPrimary: React.CSSProperties = {
+    ...pillBase,
+    background: "#d946ef",
+    color: "#fff",
+    border: "1px solid rgba(0,0,0,0)",
+    boxShadow: "0 10px 25px rgba(217, 70, 239, 0.25)",
+  };
+
   useEffect(() => {
     let alive = true;
 
     async function load() {
       try {
         setLoading(true);
-        setError(null);
+        setLoadError(null);
 
         const res = await fetch(`/api/recipes/${id}`, { cache: "no-store" });
         const json = await res.json().catch(() => null);
 
         if (!res.ok) throw new Error(json?.error || "Failed to load recipe");
 
+        const r = (json?.recipe ?? json) as Recipe;
+
         if (!alive) return;
 
-        const r: Recipe = json;
-        setOriginal(r);
+        setRecipe(r);
+
+        const key = detectExistingImageFieldKey(r);
+        setImageFieldKey(key);
 
         setTitle(r.title ?? "");
         setDescription(r.description ?? "");
+        setTagsText(tagsToCsv(r.tags));
+        setServesText(r.serves != null ? String(r.serves) : "");
+        setPrepText(r.prep_minutes != null ? String(r.prep_minutes) : "");
+        setCookText(r.cook_minutes != null ? String(r.cook_minutes) : "");
+        setImageUrl(getImageValue(r) || "");
 
-        const tagsArr = toStringArray(r.tags);
-        setTagsText(tagsArr.join(", "));
-
-        const s = (r.serves ?? r.servings ?? "") as any;
-        setServes(s === null || s === undefined ? "" : String(s));
-
-        setPrepMinutes(r.prep_minutes == null ? "" : String(r.prep_minutes));
-        setCookMinutes(r.cook_minutes == null ? "" : String(r.cook_minutes));
-
-        const ingredientsArr = toStringArray(r.ingredients);
-        setIngredientsText(arrayToLines(ingredientsArr));
-
-        const instructionsArr = toStringArray(r.instructions ?? r.steps);
-        setInstructionsText(arrayToLines(instructionsArr));
-
-        setNotes(r.notes ?? "");
+        setIngredientsText(arrayToLines(normalizeToStringArray(r.ingredients)));
+        setInstructionsText(arrayToLines(normalizeToStringArray(r.instructions ?? r.steps)));
       } catch (e: any) {
-        if (alive) setError(e?.message || "Failed to load recipe");
+        if (!alive) return;
+        setLoadError(e?.message || "Failed to load recipe");
       } finally {
-        if (alive) setLoading(false);
+        if (!alive) return;
+        setLoading(false);
       }
     }
 
@@ -104,277 +215,365 @@ export default function RecipeEditPage({ params }: { params: { id: string } }) {
     };
   }, [id]);
 
-  const isDirty = useMemo(() => {
-    if (!original) return false;
-
-    const oTags = toStringArray(original.tags).join(", ");
-    const oIngredients = arrayToLines(toStringArray(original.ingredients));
-    const oInstructions = arrayToLines(toStringArray(original.instructions ?? original.steps));
-
-    const oServes = original.serves ?? original.servings ?? "";
-    const oPrep = original.prep_minutes ?? "";
-    const oCook = original.cook_minutes ?? "";
-
-    return (
-      (original.title ?? "") !== title ||
-      (original.description ?? "") !== description ||
-      oTags !== tagsText ||
-      String(oServes ?? "") !== String(serves ?? "") ||
-      String(oPrep ?? "") !== String(prepMinutes ?? "") ||
-      String(oCook ?? "") !== String(cookMinutes ?? "") ||
-      oIngredients !== ingredientsText ||
-      oInstructions !== instructionsText ||
-      (original.notes ?? "") !== notes
-    );
-  }, [
-    original,
-    title,
-    description,
-    tagsText,
-    serves,
-    prepMinutes,
-    cookMinutes,
-    ingredientsText,
-    instructionsText,
-    notes,
-  ]);
-
-  async function save() {
-    if (!title.trim()) {
-      alert("Title is required.");
-      return;
-    }
+  async function onSave() {
+    if (!canSave || saving) return;
 
     setSaving(true);
-    setError(null);
+    setSaveError(null);
 
     const payload: any = {
       title: title.trim(),
       description: description.trim() ? description.trim() : null,
-      tags: tagsText
-        ? tagsText
-            .split(",")
-            .map((x) => x.trim())
+      tags: tagsText.trim() ? csvToTags(tagsText) : null,
+      serves: servesText.trim() ? Number(servesText) : null,
+      prep_minutes: prepText.trim() ? Number(prepText) : null,
+      cook_minutes: cookText.trim() ? Number(cookText) : null,
+      ingredients: ingredientsText.trim()
+        ? ingredientsText
+            .split("\n")
+            .map((l) => l.trim())
             .filter(Boolean)
-        : [],
-      serves: serves.trim() ? Number(serves) : null,
-      prep_minutes: prepMinutes.trim() ? Number(prepMinutes) : null,
-      cook_minutes: cookMinutes.trim() ? Number(cookMinutes) : null,
-      ingredients: linesToArray(ingredientsText),
-      instructions: linesToArray(instructionsText),
-      notes: notes.trim() ? notes.trim() : null,
+        : null,
+      instructions: instructionsText.trim()
+        ? instructionsText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+        : null,
     };
 
-    // Avoid NaN going to the API
-    if (payload.serves !== null && !Number.isFinite(payload.serves)) payload.serves = null;
-    if (payload.prep_minutes !== null && !Number.isFinite(payload.prep_minutes)) payload.prep_minutes = null;
-    if (payload.cook_minutes !== null && !Number.isFinite(payload.cook_minutes)) payload.cook_minutes = null;
+    if (payload.serves != null && Number.isNaN(payload.serves)) payload.serves = null;
+    if (payload.prep_minutes != null && Number.isNaN(payload.prep_minutes)) payload.prep_minutes = null;
+    if (payload.cook_minutes != null && Number.isNaN(payload.cook_minutes)) payload.cook_minutes = null;
+
+    if (imageFieldKey) {
+      payload[imageFieldKey] = imageUrl.trim() ? imageUrl.trim() : null;
+    }
 
     try {
-      // Prefer PUT (full update). If your route only supports PATCH, we fallback.
-      let res = await fetch(`/api/recipes/${id}`, {
-        method: "PUT",
+      const res = await fetch(`/api/recipes/${id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (res.status === 405) {
-        res = await fetch(`/api/recipes/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      }
-
       const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "Failed to save recipe");
 
-      if (!res.ok) throw new Error(json?.error || "Save failed");
-
-      // go back to detail view
-      window.location.href = `/recipes/${id}`;
+      router.push("/recipes");
+      router.refresh();
     } catch (e: any) {
-      setError(e?.message || "Save failed");
-    } finally {
+      setSaveError(e?.message || "Failed to save recipe");
       setSaving(false);
     }
   }
 
-  function cancel() {
-    if (!isDirty || confirm("Discard changes?")) {
-      window.location.href = `/recipes/${id}`;
-    }
-  }
-
-  if (loading) {
-    return <div className="min-h-screen bg-[#050816] text-white p-10">Loading…</div>;
-  }
-
-  if (error && !original) {
-    return (
-      <div className="min-h-screen bg-[#050816] text-white p-10">
-        <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
-          {error}
-        </div>
-        <div className="mt-6">
-          <Link href="/recipes" className="underline underline-offset-4 text-white/80 hover:text-white">
-            ← Back to Recipes
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const imageHint = useMemo(() => {
+    if (imageFieldKey) return "If you add a photo, the Recipe cards will show it.";
+    return "Photo saving is disabled for this recipe (no image column detected).";
+  }, [imageFieldKey]);
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white">
-      <div className="max-w-4xl mx-auto px-4 py-10">
-        <div className="flex items-center justify-between gap-4">
-          <Link href={`/recipes/${id}`} className="text-white/70 hover:text-white underline underline-offset-4">
+    <div className="rcPage">
+      <div className="rcWrap">
+        <div className="rcTopRow">
+          <Link href="/recipes" style={pillGhost}>
             ← Back
           </Link>
 
-          <div className="flex items-center gap-3">
+          <div className="rcTopActions">
             <button
               type="button"
-              onClick={cancel}
-              className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2 text-sm"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-60 px-5 py-2 text-sm font-semibold"
+              onClick={onSave}
+              disabled={!canSave || saving}
+              style={{
+                ...pillPrimary,
+                opacity: !canSave || saving ? 0.55 : 1,
+                cursor: !canSave || saving ? "not-allowed" : "pointer",
+              }}
             >
               {saving ? "Saving…" : "Save"}
             </button>
+
+            <Link href={`/recipes/${id}`} style={pillGhost}>
+              View
+            </Link>
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl bg-white/5 p-7 ring-1 ring-white/10">
-          <h1 className="text-4xl font-extrabold tracking-tight">Edit Recipe</h1>
-          <p className="mt-2 text-white/60">Keep it simple: one ingredient per line, one step per line.</p>
+        <h1 className="rcTitle">
+          {loading ? "Edit Recipe" : `Edit: ${recipe?.title ?? "Recipe"}`}
+        </h1>
 
-          {error ? (
-            <div className="mt-6 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
-              {error}
-            </div>
-          ) : null}
+        {loadError ? <div className="rcError">{loadError}</div> : null}
+        {saveError ? <div className="rcError">{saveError}</div> : null}
 
-          <div className="mt-8 grid gap-6">
-            {/* Title */}
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Title</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                placeholder="e.g., Lasagna"
-              />
-            </div>
+        {loading ? (
+          <div className="rcMuted" style={{ marginTop: 18 }}>
+            Loading…
+          </div>
+        ) : recipe ? (
+          <div className="rcCard">
+            <div className="rcGrid">
+              <div className="rcField rcSpan2">
+                <label className="rcLabel">Title</label>
+                <input className="rcInput" value={title} onChange={(e) => setTitle(e.target.value)} />
+              </div>
 
-            {/* Description */}
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Description</label>
-              <input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                placeholder="Optional short note"
-              />
-            </div>
-
-            {/* Tags */}
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Tags (comma separated)</label>
-              <input
-                value={tagsText}
-                onChange={(e) => setTagsText(e.target.value)}
-                className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                placeholder="Pasta, Comfort, Weeknight"
-              />
-            </div>
-
-            {/* Serves / Prep / Cook */}
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <label className="block text-sm text-white/70 mb-2">Serves</label>
+              <div className="rcField rcSpan2">
+                <label className="rcLabel">Description</label>
                 <input
-                  value={serves}
-                  onChange={(e) => setServes(e.target.value)}
-                  inputMode="numeric"
-                  className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                  placeholder="e.g., 4"
+                  className="rcInput"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional short note"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm text-white/70 mb-2">Prep (minutes)</label>
+              <div className="rcField rcSpan2">
+                <label className="rcLabel">Image URL</label>
                 <input
-                  value={prepMinutes}
-                  onChange={(e) => setPrepMinutes(e.target.value)}
-                  inputMode="numeric"
-                  className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                  placeholder="e.g., 15"
+                  className="rcInput"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="Optional — paste an image URL"
+                  disabled={!imageFieldKey}
+                />
+                <div className="rcHint">{imageHint}</div>
+              </div>
+
+              <div className="rcField rcSpan2">
+                <label className="rcLabel">Tags (comma separated)</label>
+                <input
+                  className="rcInput"
+                  value={tagsText}
+                  onChange={(e) => setTagsText(e.target.value)}
+                  placeholder="Pasta, Comfort, Weeknight"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm text-white/70 mb-2">Cook (minutes)</label>
+              <div className="rcField">
+                <label className="rcLabel">Serves</label>
                 <input
-                  value={cookMinutes}
-                  onChange={(e) => setCookMinutes(e.target.value)}
+                  className="rcInput"
+                  value={servesText}
+                  onChange={(e) => setServesText(e.target.value)}
                   inputMode="numeric"
-                  className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                  placeholder="e.g., 45"
+                />
+              </div>
+
+              <div className="rcField">
+                <label className="rcLabel">Prep (minutes)</label>
+                <input
+                  className="rcInput"
+                  value={prepText}
+                  onChange={(e) => setPrepText(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+
+              <div className="rcField">
+                <label className="rcLabel">Cook (minutes)</label>
+                <input
+                  className="rcInput"
+                  value={cookText}
+                  onChange={(e) => setCookText(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+
+              <div className="rcField rcSpan2">
+                <label className="rcLabel">Ingredients (one per line)</label>
+                <textarea
+                  className="rcTextarea"
+                  value={ingredientsText}
+                  onChange={(e) => setIngredientsText(e.target.value)}
+                />
+              </div>
+
+              <div className="rcField rcSpan2">
+                <label className="rcLabel">Instructions (one per line)</label>
+                <textarea
+                  className="rcTextarea"
+                  value={instructionsText}
+                  onChange={(e) => setInstructionsText(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Ingredients */}
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Ingredients (one per line)</label>
-              <textarea
-                value={ingredientsText}
-                onChange={(e) => setIngredientsText(e.target.value)}
-                rows={10}
-                className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                placeholder={`Ground beef\nNoodles\nTomato sauce`}
-              />
-            </div>
-
-            {/* Instructions */}
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Instructions (one per line)</label>
-              <textarea
-                value={instructionsText}
-                onChange={(e) => setInstructionsText(e.target.value)}
-                rows={10}
-                className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                placeholder={`Boil noodles\nCook meat sauce\nCombine and bake`}
-              />
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm text-white/70 mb-2">Notes (optional)</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={4}
-                className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                placeholder="Any personal tips, substitutions, etc."
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-white/50 text-sm">
-              <span>{isDirty ? "Unsaved changes" : "All changes saved (or no changes yet)"}</span>
-              <span>Recipe ID: {id}</span>
+            <div className="rcBottomRow">
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={!canSave || saving}
+                style={{
+                  ...pillPrimary,
+                  opacity: !canSave || saving ? 0.55 : 1,
+                  cursor: !canSave || saving ? "not-allowed" : "pointer",
+                }}
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </button>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="rcMuted" style={{ marginTop: 18 }}>
+            Recipe not found.
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        .rcPage {
+          min-height: 100vh;
+          background:
+            radial-gradient(1200px 800px at 15% 20%, rgba(217, 70, 239, 0.14), transparent 55%),
+            radial-gradient(900px 600px at 85% 25%, rgba(56, 189, 248, 0.10), transparent 55%),
+            linear-gradient(180deg, #060812 0%, #050814 60%, #040612 100%);
+          color: rgba(255, 255, 255, 0.92);
+        }
+
+        .rcWrap {
+          max-width: 980px;
+          margin: 0 auto;
+          padding: 34px 24px 60px 24px;
+        }
+
+        .rcTopRow {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .rcTopActions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .rcTitle {
+          margin: 18px 0 0 0;
+          font-size: 44px;
+          line-height: 1.1;
+          font-weight: 900;
+          letter-spacing: -0.02em;
+        }
+
+        .rcError {
+          margin-top: 16px;
+          border-radius: 18px;
+          padding: 14px 16px;
+          background: rgba(248, 113, 113, 0.12);
+          border: 1px solid rgba(248, 113, 113, 0.22);
+          color: rgba(255, 220, 220, 0.95);
+        }
+
+        .rcCard {
+          margin-top: 22px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.10);
+          border-radius: 26px;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+          padding: 18px;
+          backdrop-filter: blur(10px);
+        }
+
+        .rcGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .rcSpan2 {
+          grid-column: span 2;
+        }
+
+        .rcField {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .rcLabel {
+          font-weight: 800;
+          color: rgba(255, 255, 255, 0.78);
+          font-size: 14px;
+        }
+
+        .rcInput {
+          width: 100%;
+          border-radius: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.10);
+          background: rgba(0, 0, 0, 0.25);
+          color: rgba(255, 255, 255, 0.92);
+          padding: 12px 14px;
+          font-size: 15px;
+          outline: none;
+        }
+
+        .rcInput::placeholder {
+          color: rgba(255, 255, 255, 0.35);
+        }
+
+        .rcInput:focus {
+          border-color: rgba(217, 70, 239, 0.35);
+          box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.12);
+        }
+
+        .rcInput:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .rcTextarea {
+          width: 100%;
+          min-height: 160px;
+          border-radius: 18px;
+          border: 1px solid rgba(255, 255, 255, 0.10);
+          background: rgba(0, 0, 0, 0.25);
+          color: rgba(255, 255, 255, 0.92);
+          padding: 12px 14px;
+          font-size: 15px;
+          outline: none;
+          resize: vertical;
+          line-height: 1.35;
+        }
+
+        .rcTextarea:focus {
+          border-color: rgba(217, 70, 239, 0.35);
+          box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.12);
+        }
+
+        .rcHint {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.50);
+        }
+
+        .rcBottomRow {
+          margin-top: 16px;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .rcMuted {
+          color: rgba(255, 255, 255, 0.55);
+        }
+
+        @media (max-width: 720px) {
+          .rcGrid {
+            grid-template-columns: 1fr;
+          }
+          .rcSpan2 {
+            grid-column: span 1;
+          }
+          .rcTitle {
+            font-size: 38px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,7 +1,11 @@
+// app/recipes/[id]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import DeleteRecipeButton from "./DeleteRecipeButton";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type Recipe = {
   id: string;
@@ -10,6 +14,10 @@ type Recipe = {
   source_url?: string | null;
   source_name?: string | null;
   favorite?: boolean | null;
+  tags?: string[] | string | null;
+  serves?: number | null;
+  prep_minutes?: number | null;
+  cook_minutes?: number | null;
   ingredients?: any;
   instructions?: any;
   steps?: any;
@@ -61,7 +69,7 @@ function toStringArrayBasic(value: unknown): string[] {
       .filter(Boolean);
   }
   if (typeof value === "string") {
-    return value
+    return normalizeNewlines(value)
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
@@ -102,6 +110,11 @@ function parseInstructions(value: unknown): string[] {
   return toStringArrayBasic(value);
 }
 
+const pill =
+  "inline-flex items-center justify-center rounded-full bg-white/10 hover:bg-white/15 px-6 py-3 font-semibold ring-1 ring-white/10 transition";
+const pillPrimary =
+  "inline-flex items-center justify-center rounded-full bg-fuchsia-500 hover:bg-fuchsia-400 px-6 py-3 font-semibold text-white shadow-lg shadow-fuchsia-500/20 transition";
+
 export default async function RecipeDetailPage({ params }: PageProps) {
   const { data: recipe, error } = await supabaseServer
     .from("recipes")
@@ -113,6 +126,10 @@ export default async function RecipeDetailPage({ params }: PageProps) {
       source_url,
       source_name,
       favorite,
+      tags,
+      serves,
+      prep_minutes,
+      cook_minutes,
       ingredients,
       instructions,
       steps,
@@ -131,167 +148,107 @@ export default async function RecipeDetailPage({ params }: PageProps) {
   const instructions = parseInstructions(recipe.instructions ?? recipe.steps);
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <Link href="/recipes" style={{ textDecoration: "none" }}>
-        ← Back to Recipes
-      </Link>
+    <div className="min-h-screen bg-[#050816] text-white">
+      <div className="max-w-6xl mx-auto px-4 py-10">
+        {/* Top bar */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Link href="/recipes" className={pill}>
+            ← Back to Recipes
+          </Link>
 
-      <div
-        style={{
-          marginTop: 16,
-          padding: 20,
-          borderRadius: 16,
-          background: "rgba(255,255,255,0.04)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 16,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <h1 style={{ fontSize: 56, margin: 0, lineHeight: 1.05 }}>
-              {recipe.title}
-            </h1>
-
-            {recipe.source_url && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 14, opacity: 0.78 }}>
-                  Source:{" "}
-                  <a
-                    href={recipe.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ textDecoration: "underline" }}
-                  >
-                    {sourceLabel}
-                  </a>
-                </div>
-
-                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.55 }}>
-                  {recipe.source_url}
-                </div>
-              </div>
-            )}
-
-            {recipe.description && (
-              <p style={{ marginTop: 12, opacity: 0.85 }}>
-                {recipe.description}
-              </p>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <Link href={`/recipes/${recipe.id}/cook`}>
-              <button
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.2)",
-                  cursor: "pointer",
-                }}
-              >
-                Cook
-              </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link href={`/recipes/${recipe.id}/cook`} className={pill}>
+              Cook
+            </Link>
+            <Link href={`/recipes/${recipe.id}/edit`} className={pillPrimary}>
+              Edit
             </Link>
 
-            <Link href={`/recipes/${recipe.id}/edit`}>
-              <button
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.2)",
-                  cursor: "pointer",
-                }}
-              >
-                Edit
-              </button>
-            </Link>
-
-            <Link href={`/recipes/${recipe.id}/duplicate`}>
-              <button
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.2)",
-                  cursor: "pointer",
-                }}
-              >
-                Duplicate
-              </button>
-            </Link>
+            {/* Duplicate removed (not needed / not working) */}
 
             <DeleteRecipeButton recipeId={recipe.id} recipeTitle={recipe.title} />
           </div>
         </div>
 
-        {/* Ingredients + Instructions */}
-        <div
-          style={{
-            marginTop: 22,
-            padding: 18,
-            borderRadius: 16,
-            background: "rgba(0,0,0,0.18)",
-          }}
-        >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-            <div>
-              <h2 style={{ fontSize: 28, margin: 0 }}>Ingredients</h2>
-              {ingredients.length === 0 ? (
-                <div style={{ marginTop: 10, opacity: 0.7 }}>No ingredients yet.</div>
-              ) : (
-                <ul style={{ marginTop: 12, paddingLeft: 18, lineHeight: 1.65 }}>
-                  {ingredients.map((ing, idx) => (
-                    <li key={`${ing}-${idx}`}>{ing}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
+        {/* Main card */}
+        <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+          <div className="flex items-start justify-between gap-6 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-6xl font-extrabold tracking-tight leading-[1.05]">{recipe.title}</h1>
 
-            <div>
-              <h2 style={{ fontSize: 28, margin: 0 }}>Instructions</h2>
-              {instructions.length === 0 ? (
-                <div style={{ marginTop: 10, opacity: 0.7 }}>No instructions yet.</div>
-              ) : (
-                <ol style={{ marginTop: 12, paddingLeft: 18, lineHeight: 1.65 }}>
-                  {instructions.map((step, idx) => (
-                    <li key={`${step}-${idx}`} style={{ marginBottom: 10 }}>
-                      {step}
-                    </li>
-                  ))}
-                </ol>
-              )}
+              {recipe.serves || recipe.prep_minutes || recipe.cook_minutes ? (
+                <div className="mt-3 text-sm text-white/70 flex flex-wrap gap-x-4 gap-y-1">
+                  {recipe.serves ? <span>Serves: {recipe.serves}</span> : null}
+                  {recipe.prep_minutes ? <span>Prep: {recipe.prep_minutes}m</span> : null}
+                  {recipe.cook_minutes ? <span>Cook: {recipe.cook_minutes}m</span> : null}
+                </div>
+              ) : null}
+
+              {recipe.source_url ? (
+                <div className="mt-4">
+                  <div className="text-sm text-white/70">
+                    Source:{" "}
+                    <a
+                      href={recipe.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-4 text-white hover:text-white/90"
+                    >
+                      {sourceLabel}
+                    </a>
+                  </div>
+                  <div className="mt-1 text-xs text-white/40 break-all">{recipe.source_url}</div>
+                </div>
+              ) : null}
+
+              {recipe.description ? <p className="mt-4 text-white/80">{recipe.description}</p> : null}
             </div>
           </div>
-        </div>
 
-        {/* Imported page text (Phase 3D) */}
-        {recipe.source_text ? (
-          <div
-            style={{
-              marginTop: 18,
-              padding: 16,
-              borderRadius: 16,
-              border: "1px solid rgba(0,0,0,0.10)",
-              background: "rgba(255,255,255,0.02)",
-            }}
-          >
-            <h3 style={{ margin: 0, marginBottom: 10 }}>Imported page text</h3>
-            <div style={{ whiteSpace: "pre-wrap", opacity: 0.85, lineHeight: 1.55 }}>
-              {recipe.source_text.slice(0, 5000)}
-            </div>
-            {recipe.source_text.length > 5000 ? (
-              <div style={{ marginTop: 10, opacity: 0.7, fontSize: 13 }}>
-                Showing first 5,000 characters.
+          {/* Ingredients + Instructions */}
+          <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+            <div className="grid gap-8 md:grid-cols-2">
+              <div>
+                <h2 className="text-3xl font-extrabold tracking-tight">Ingredients</h2>
+                {ingredients.length === 0 ? (
+                  <div className="mt-3 text-white/60">No ingredients yet.</div>
+                ) : (
+                  <ul className="mt-4 list-disc pl-5 leading-relaxed text-white/85">
+                    {ingredients.map((ing, idx) => (
+                      <li key={`${ing}-${idx}`}>{ing}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            ) : null}
+
+              <div>
+                <h2 className="text-3xl font-extrabold tracking-tight">Instructions</h2>
+                {instructions.length === 0 ? (
+                  <div className="mt-3 text-white/60">No instructions yet.</div>
+                ) : (
+                  <ol className="mt-4 list-decimal pl-5 leading-relaxed text-white/85">
+                    {instructions.map((step, idx) => (
+                      <li key={`${step}-${idx}`} className="mb-3">
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            </div>
           </div>
-        ) : null}
+
+          {/* Imported page text (optional) */}
+          {recipe.source_text ? (
+            <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+              <h3 className="text-xl font-extrabold tracking-tight">Imported page text</h3>
+              <div className="mt-3 whitespace-pre-wrap text-white/80 leading-relaxed">{recipe.source_text.slice(0, 5000)}</div>
+              {recipe.source_text.length > 5000 ? (
+                <div className="mt-3 text-xs text-white/50">Showing first 5,000 characters.</div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
