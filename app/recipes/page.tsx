@@ -1,3 +1,4 @@
+// app/recipes/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -12,7 +13,7 @@ import {
   type StorageItem,
 } from "../../lib/ingredientMatch";
 
-import { supabase } from "@/lib/supabaseClient";
+import { generateSuggestedRecipes } from "@/lib/recipeSuggestions";
 
 type Recipe = {
   id: string;
@@ -24,16 +25,78 @@ type Recipe = {
   servings?: number | null;
   prep_minutes?: number | null;
   cook_minutes?: number | null;
+
   ingredients?: any;
+  ingredients_json?: any;
+  ingredients_list?: any;
+  ingredientsText?: any;
+  ingredients_text?: any;
+
   instructions?: any;
   steps?: any;
+
   created_at?: string | null;
   updated_at?: string | null;
 };
 
 type SortMode = "newest" | "oldest" | "az" | "za";
+type Tab = "mine" | "suggested";
+
+function makeSeed() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// deterministic shuffle utilities (so “New batch” works predictably)
+function hashStringToInt(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(a: number) {
+  return function () {
+    let t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffleWithSeed<T>(arr: T[], seed: string): T[] {
+  const out = [...arr];
+  const rnd = mulberry32(hashStringToInt(seed));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function extractIngredientsFromRecipe(r: Recipe): string[] {
+  const candidates = [
+    r.ingredients,
+    (r as any).ingredients_json,
+    (r as any).ingredients_list,
+    (r as any).ingredientsText,
+    (r as any).ingredients_text,
+  ];
+  for (const v of candidates) {
+    const arr = toStringArray(v);
+    if (arr.length > 0) return arr;
+  }
+  return [];
+}
+
+function extractInstructionsFromRecipe(r: Recipe): string[] {
+  return toStringArray(r.instructions ?? r.steps);
+}
 
 export default function RecipesPage() {
+  const [tab, setTab] = useState<Tab>("mine");
+
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loadingRecipes, setLoadingRecipes] = useState(true);
   const [recipesError, setRecipesError] = useState<string | null>(null);
@@ -43,21 +106,33 @@ export default function RecipesPage() {
   const [storageError, setStorageError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<string>("__all__");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [noBuyOnly, setNoBuyOnly] = useState(false);
 
-  // NEW quick filters
-  const [hasIngredientsOnly, setHasIngredientsOnly] = useState(false);
-  const [hasInstructionsOnly, setHasInstructionsOnly] = useState(false);
-
   const [sortMode, setSortMode] = useState<SortMode>("newest");
 
-  // ---------- Load recipes ----------
+  // Suggested recipes preferences (local only for now)
+  const [avoidRaw, setAvoidRaw] = useState<string>("");
+
+  const [suggestedSeed, setSuggestedSeed] = useState<string>(() => makeSeed());
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("rc_avoid_ingredients") || "";
+      setAvoidRaw(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("rc_avoid_ingredients", avoidRaw);
+    } catch {}
+  }, [avoidRaw]);
+
   useEffect(() => {
     let alive = true;
 
-    async function load() {
+    async function loadRecipes() {
       try {
         setLoadingRecipes(true);
         setRecipesError(null);
@@ -76,17 +151,17 @@ export default function RecipesPage() {
       }
     }
 
-    load();
+    loadRecipes();
+
     return () => {
       alive = false;
     };
   }, []);
 
-  // ---------- Load storage ----------
   useEffect(() => {
     let alive = true;
 
-    async function load() {
+    async function loadStorage() {
       try {
         setLoadingStorage(true);
         setStorageError(null);
@@ -105,24 +180,15 @@ export default function RecipesPage() {
       }
     }
 
-    load();
+    loadStorage();
+
     return () => {
       alive = false;
     };
   }, []);
 
-  // ---------- Derived ----------
   const storageIndex = useMemo(() => buildStorageIndex(storage), [storage]);
 
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of recipes) {
-      toStringArray(r.tags).forEach((t) => set.add(t));
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [recipes]);
-
-  // Precompute per-recipe arrays + storage summary for speed + consistency
   const computed = useMemo(() => {
     const map = new Map<
       string,
@@ -131,14 +197,19 @@ export default function RecipesPage() {
         ingredients: string[];
         instructions: string[];
         searchBlob: string;
-        summary: { total: number; haveCount: number; missing: string[]; allInStock: boolean };
+        summary: {
+          total: number;
+          haveCount: number;
+          missing: string[];
+          allInStock: boolean;
+        };
       }
     >();
 
     for (const r of recipes) {
       const tags = toStringArray(r.tags);
-      const ingredients = toStringArray(r.ingredients);
-      const instructions = toStringArray(r.instructions ?? r.steps);
+      const ingredients = extractIngredientsFromRecipe(r);
+      const instructions = extractInstructionsFromRecipe(r);
 
       const searchBlob = [
         r.title ?? "",
@@ -174,25 +245,10 @@ export default function RecipesPage() {
       const meta = computed.get(r.id);
 
       const matchesQuery = !q || Boolean(meta?.searchBlob.includes(q));
-
-      const matchesTag = tagFilter === "__all__" || meta?.tags.includes(tagFilter);
-
       const matchesFav = !favoritesOnly || Boolean(r.favorite);
-
       const matchesNoBuy = !noBuyOnly || Boolean(meta?.summary.allInStock);
 
-      const matchesHasIngredients = !hasIngredientsOnly || (meta?.ingredients.length ?? 0) > 0;
-
-      const matchesHasInstructions = !hasInstructionsOnly || (meta?.instructions.length ?? 0) > 0;
-
-      return (
-        matchesQuery &&
-        matchesTag &&
-        matchesFav &&
-        matchesNoBuy &&
-        matchesHasIngredients &&
-        matchesHasInstructions
-      );
+      return matchesQuery && matchesFav && matchesNoBuy;
     });
 
     list = [...list].sort((a, b) => {
@@ -206,19 +262,8 @@ export default function RecipesPage() {
     });
 
     return list;
-  }, [
-    recipes,
-    computed,
-    query,
-    tagFilter,
-    favoritesOnly,
-    noBuyOnly,
-    hasIngredientsOnly,
-    hasInstructionsOnly,
-    sortMode,
-  ]);
+  }, [recipes, computed, query, favoritesOnly, noBuyOnly, sortMode]);
 
-  // ---------- Actions ----------
   async function toggleFavorite(recipe: Recipe) {
     const prev = Boolean(recipe.favorite);
 
@@ -251,268 +296,464 @@ export default function RecipesPage() {
 
   function resetFilters() {
     setQuery("");
-    setTagFilter("__all__");
     setFavoritesOnly(false);
     setNoBuyOnly(false);
-    setHasIngredientsOnly(false);
-    setHasInstructionsOnly(false);
     setSortMode("newest");
   }
 
   const storageStatusText = useMemo(() => {
-    if (loadingStorage) return "loading storage…";
+    if (loadingStorage) return "loading…";
     if (storageError) return `unavailable (${storageError})`;
-    return "open storage";
+    return "Pantry & Freezer";
   }, [loadingStorage, storageError]);
 
-  // ---------- Render ----------
+  const suggested = useMemo(() => {
+    const base = generateSuggestedRecipes({
+      recipes,
+      avoidRaw,
+      limit: 12,
+    });
+
+    return {
+      preferredTags: base.preferredTags,
+      suggestions: shuffleWithSeed(base.suggestions, suggestedSeed),
+    };
+  }, [recipes, avoidRaw, suggestedSeed]);
+
+  const tabPill =
+    "group relative inline-flex items-center gap-3 rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
+  const tabPillActive =
+    "group relative inline-flex items-center gap-3 rounded-full bg-fuchsia-500/80 hover:bg-fuchsia-500 px-5 py-3 text-sm font-extrabold text-white ring-1 ring-white/10 transition";
+
+  function goSaveSuggestion(s: any) {
+    const title = String(s?.title ?? "").trim();
+    const source_url = String(s?.source_url ?? "").trim();
+    const source_name = String(s?.source_name ?? "").trim();
+
+    if (source_url) {
+      window.location.href = `/recipes/clip?url=${encodeURIComponent(source_url)}`;
+      return;
+    }
+
+    const qp = new URLSearchParams();
+    if (title) qp.set("title", title);
+    if (source_url) qp.set("source_url", source_url);
+    if (source_name) qp.set("source_name", source_name);
+
+    window.location.href = qp.toString()
+      ? `/recipes/add/manual?${qp.toString()}`
+      : `/recipes/add/manual`;
+  }
+
   return (
     <div className="min-h-screen bg-[#050816] text-white">
-      <div className="max-w-6xl mx-auto px-4 py-10">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-6xl font-extrabold tracking-tight">Your Recipes</h1>
-            <p className="mt-3 text-white/70">A cozy little vault for the meals your house actually likes.</p>
+      {/* Header banner */}
+      <div className="relative overflow-hidden border-b border-white/10">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-40 -left-40 h-[420px] w-[420px] rounded-full bg-fuchsia-500/15 blur-3xl" />
+          <div className="absolute -bottom-48 -right-40 h-[520px] w-[520px] rounded-full bg-cyan-400/10 blur-3xl" />
+        </div>
 
-            <div className="mt-2 text-white/50 text-sm">
-              FrostPantry link:{" "}
-              <Link href="/frostpantry" className="underline underline-offset-4 text-white/70 hover:text-white">
-                {storageStatusText}
+        <div className="relative max-w-6xl mx-auto px-4 pt-10 pb-7">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-6xl font-extrabold tracking-tight">
+                Recipes{" "}
+                <span className="inline-block align-middle ml-2 h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_30px_rgba(232,121,249,0.35)]" />
+              </h1>
+
+              <p className="mt-3 text-white/75 text-lg">
+                Your personal recipe vault. The ones that survived real life.
+              </p>
+
+              <div className="mt-3 text-white/50 text-sm">
+                <span className="text-white/40">Pantry link:</span>{" "}
+                <Link
+                  href="/frostpantry"
+                  className="underline underline-offset-4 text-white/70 hover:text-white"
+                >
+                  {storageStatusText}
+                </Link>
+                {!loadingStorage && !storageError ? (
+                  <span className="text-white/40"> • loaded {storage.length} items</span>
+                ) : null}
+              </div>
+
+              <div className="mt-6 flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setTab("mine")}
+                  className={tab === "mine" ? tabPillActive : tabPill}
+                >
+                  <span className="text-lg">📚</span>
+                  <span className="flex flex-col items-start leading-tight">
+                    <span>My Recipes</span>
+                    <span
+                      className={
+                        tab === "mine"
+                          ? "text-white/90 text-[11px] font-semibold"
+                          : "text-white/60 text-[11px] font-semibold"
+                      }
+                    >
+                      The usual suspects.
+                    </span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTab("suggested")}
+                  className={tab === "suggested" ? tabPillActive : tabPill}
+                >
+                  <span className="text-lg">✨</span>
+                  <span className="flex flex-col items-start leading-tight">
+                    <span className="flex items-center gap-2">
+                      Suggested{" "}
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold text-white/80 ring-1 ring-white/10">
+                        Coming soon
+                      </span>
+                    </span>
+                    <span
+                      className={
+                        tab === "suggested"
+                          ? "text-white/90 text-[11px] font-semibold"
+                          : "text-white/60 text-[11px] font-semibold"
+                      }
+                    >
+                      Let me find you something.
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                href="/recipes/add"
+                className="rounded-full bg-fuchsia-500 hover:bg-fuchsia-400 px-6 py-3 font-semibold shadow-lg shadow-fuchsia-500/20"
+                aria-label="Add recipe"
+              >
+                + Add recipe
               </Link>
-              {!loadingStorage && !storageError ? (
-                <span className="text-white/40"> • loaded {storage.length} items</span>
-              ) : null}
             </div>
           </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/recipes/clip"
-              className="rounded-full bg-white/10 hover:bg-white/15 px-6 py-3 font-semibold ring-1 ring-white/10"
-              title="Save a recipe link (Web Clip)"
-            >
-              Save from URL
-            </Link>
-
-            <Link
-              href="/recipes/add"
-              className="rounded-full bg-fuchsia-500 hover:bg-fuchsia-400 px-6 py-3 font-semibold shadow-lg shadow-fuchsia-500/20"
-            >
-              + Add recipe
-            </Link>
-          </div>
         </div>
+      </div>
 
-        {/* Controls */}
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-          <div className="flex flex-wrap items-center gap-4">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search title, tags, ingredients…"
-              className="w-[280px] rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-            />
+      {/* Body */}
+      <div className="max-w-6xl mx-auto px-4 py-10">
+        {tab === "mine" ? (
+          <>
+            {/* Controls */}
+            <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex flex-col gap-2">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by ingredient, mood, or vague intention…"
+                    className="w-[320px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                  />
+                  <div className="text-xs text-white/45">
+                    Searches titles, ingredients, and instructions. No judgment.
+                  </div>
+                </div>
 
-            <select
-              value={tagFilter}
-              onChange={(e) => setTagFilter(e.target.value)}
-              className="w-[220px] rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-            >
-              <option value="__all__">All tags</option>
-              {allTags.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as SortMode)}
+                  className="w-[220px] rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="az">A → Z</option>
+                  <option value="za">Z → A</option>
+                </select>
 
-            <select
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as SortMode)}
-              className="w-[220px] rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-            >
-              <option value="newest">Newest</option>
-              <option value="oldest">Oldest</option>
-              <option value="az">A → Z</option>
-              <option value="za">Z → A</option>
-            </select>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+                  title="Reset filters"
+                >
+                  Reset
+                </button>
+              </div>
 
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
-            >
-              Reset
-            </button>
-          </div>
+              <div className="mt-4 flex flex-wrap items-start gap-6 text-white/80">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={favoritesOnly}
+                    onChange={(e) => setFavoritesOnly(e.target.checked)}
+                    className="h-4 w-4 accent-fuchsia-500"
+                  />
+                  Favorites only
+                </label>
 
-          <div className="mt-4 flex flex-wrap items-center gap-5 text-white/80">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={favoritesOnly}
-                onChange={(e) => setFavoritesOnly(e.target.checked)}
-                className="h-4 w-4 accent-fuchsia-500"
-              />
-              Favorites only
-            </label>
+                <div className="flex flex-col gap-1">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={noBuyOnly}
+                      onChange={(e) => setNoBuyOnly(e.target.checked)}
+                      disabled={loadingStorage || Boolean(storageError)}
+                      className="h-4 w-4 accent-fuchsia-500 disabled:opacity-50"
+                    />
+                    No-buy only
+                  </label>
 
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={noBuyOnly}
-                onChange={(e) => setNoBuyOnly(e.target.checked)}
-                disabled={loadingStorage || Boolean(storageError)}
-                className="h-4 w-4 accent-fuchsia-500 disabled:opacity-50"
-              />
-              No-buy only
-            </label>
+                  {noBuyOnly && !loadingStorage && !storageError ? (
+                    <div className="text-xs text-white/55 pl-6">Pantry’s got this.</div>
+                  ) : null}
 
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={hasIngredientsOnly}
-                onChange={(e) => setHasIngredientsOnly(e.target.checked)}
-                className="h-4 w-4 accent-fuchsia-500"
-              />
-              Has ingredients
-            </label>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={hasInstructionsOnly}
-                onChange={(e) => setHasInstructionsOnly(e.target.checked)}
-                className="h-4 w-4 accent-fuchsia-500"
-              />
-              Has instructions
-            </label>
-
-            {storageError ? <span className="text-xs text-white/40">(No-buy needs storage)</span> : null}
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="mt-8">
-          {loadingRecipes ? (
-            <div className="text-white/70">Loading…</div>
-          ) : recipesError ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
-              {recipesError}
+                  {storageError ? (
+                    <div className="text-xs text-white/40 pl-6">(No-buy needs pantry storage)</div>
+                  ) : null}
+                </div>
+              </div>
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-white/50">No matches. Try clearing filters.</div>
-          ) : (
-            <div className="grid gap-6 sm:grid-cols-2">
-              {filtered.map((r) => {
-                const meta = computed.get(r.id);
-                const tags = meta?.tags ?? [];
-                const serves = r.serves ?? r.servings ?? null;
 
-                const summary = meta?.summary ?? {
-                  total: 0,
-                  haveCount: 0,
-                  missing: [] as string[],
-                  allInStock: false,
-                };
+            <div className="mt-8">
+              {loadingRecipes ? (
+                <div className="text-white/70">Loading…</div>
+              ) : recipesError ? (
+                <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
+                  {recipesError}
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="text-white/55">
+                  <div className="font-semibold text-white/70">No matches.</div>
+                  <div className="mt-1 text-sm text-white/50">Try fewer words or a different vibe.</div>
+                </div>
+              ) : (
+                <div className="grid gap-6 sm:grid-cols-2">
+                  {filtered.map((r) => {
+                    const meta = computed.get(r.id);
+                    const tags = meta?.tags ?? [];
+                    const serves = r.serves ?? r.servings ?? null;
 
-                const showStorageBits = !loadingStorage && !storageError && summary.total > 0;
+                    const summary = meta?.summary ?? {
+                      total: 0,
+                      haveCount: 0,
+                      missing: [] as string[],
+                      allInStock: false,
+                    };
 
-                return (
-                  <div key={r.id} className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
-                    {/* Favorite star */}
+                    const showStorageBits = !loadingStorage && !storageError && summary.total > 0;
+
+                    // Inventory indicator (LOCKED behavior): no missing badges, no “ready” banners.
+                    // Color encodes confidence: green (most/all), amber (some), rusty orange (low).
+                    let inventoryClass = "text-white/70 font-normal";
+                    let inventoryToneState: "good" | "some" | "low" = "low";
+
+                    if (showStorageBits) {
+                      const total = Math.max(0, Number(summary.total) || 0);
+                      const have = Math.max(0, Number(summary.haveCount) || 0);
+                      const coverage = total > 0 ? have / total : 0;
+
+                      if (coverage >= 0.8) inventoryToneState = "good";
+                      else if (coverage >= 0.3) inventoryToneState = "some";
+                      else inventoryToneState = "low";
+
+                      inventoryClass =
+                        inventoryToneState === "good"
+                          ? "text-emerald-400 font-semibold"
+                          : inventoryToneState === "some"
+                            ? "text-amber-400 font-normal"
+                            : "text-orange-500 font-normal";
+                    }
+
+                    return (
+                      <div key={r.id} className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleFavorite(r);
+                          }}
+                          className="absolute right-6 top-6 text-2xl leading-none"
+                          title={r.favorite ? "Unfavorite" : "Favorite"}
+                          aria-label={r.favorite ? "Unfavorite" : "Favorite"}
+                        >
+                          {r.favorite ? "⭐" : "☆"}
+                        </button>
+
+                        <Link href={`/recipes/${r.id}`} className="block">
+                          <h2 className="text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
+                          {r.description ? (
+                            <p className="mt-2 text-white/70 line-clamp-2">{r.description}</p>
+                          ) : null}
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {serves != null ? (
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Serves {serves}</span>
+                            ) : null}
+                            {r.prep_minutes != null ? (
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                                Prep {r.prep_minutes}m
+                              </span>
+                            ) : null}
+                            {r.cook_minutes != null ? (
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                                Cook {r.cook_minutes}m
+                              </span>
+                            ) : null}
+                            {tags.slice(0, 3).map((t) => (
+                              <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+
+                          {showStorageBits ? (
+                            <div className={`mt-4 text-sm ${inventoryClass}`}>
+                              Have{" "}
+                              <span
+                                className={
+                                  inventoryToneState === "good" ? "font-semibold" : "font-medium"
+                                }
+                              >
+                                {summary.haveCount}/{summary.total}
+                              </span>{" "}
+                              in Pantry &amp; Freezer
+                            </div>
+                          ) : null}
+                        </Link>
+
+                        <div className="mt-6 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => (window.location.href = `/recipes/${r.id}/edit`)}
+                            className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteRecipe(r)}
+                            className="rounded-2xl bg-red-600 hover:bg-red-500 px-5 py-3"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Suggested tab */}
+            <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-2xl font-extrabold tracking-tight">
+                    Suggested recipes{" "}
+                    <span className="ml-2 align-middle rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold text-white/80 ring-1 ring-white/10">
+                      Coming soon
+                    </span>
+                  </h2>
+                  <p className="mt-2 text-white/70">
+                    Let me find you something. For now, this is a stub pool while we wire up the real version.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSuggestedSeed(makeSeed())}
+                  className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10"
+                  title="Shuffle the suggestions"
+                >
+                  🔄 New batch
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+                  <div className="text-sm font-bold text-white/90">Never suggest (comma-separated)</div>
+                  <div className="mt-2 text-xs text-white/60">Example: kale, chickpeas, capers, alfredo, sausage</div>
+
+                  <input
+                    value={avoidRaw}
+                    onChange={(e) => setAvoidRaw(e.target.value)}
+                    placeholder="kale, chickpeas, capers…"
+                    className="mt-3 w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                  />
+
+                  <div className="mt-3 text-xs text-white/50">Saved locally.</div>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+                  <div className="text-sm font-bold text-white/90">What it’s learning right now</div>
+                  <div className="mt-2 text-xs text-white/60">We rank suggestions using your recipe tags + favorites.</div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {suggested.preferredTags.length === 0 ? (
+                      <span className="text-white/60 text-sm">Add some tags/favorites to improve recommendations.</span>
+                    ) : (
+                      suggested.preferredTags.map((t) => (
+                        <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                          {t}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-6 sm:grid-cols-2">
+              {suggested.suggestions.map((s: any) => (
+                <div key={s.id} className="rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
+                  <div className="text-3xl font-extrabold tracking-tight">{s.title}</div>
+                  {s.description ? <div className="mt-2 text-white/70">{s.description}</div> : null}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {(s.tags || []).slice(0, 4).map((t: string) => (
+                      <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 text-white/60 text-sm">
+                    Ingredients (keywords):{" "}
+                    <span className="text-white/75">{(s.ingredients || []).slice(0, 6).join(", ")}</span>
+                  </div>
+
+                  <div className="mt-6 flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleFavorite(r);
-                      }}
-                      className="absolute right-6 top-6 text-2xl leading-none"
-                      title={r.favorite ? "Unfavorite" : "Favorite"}
-                      aria-label={r.favorite ? "Unfavorite" : "Favorite"}
+                      className="rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 px-5 py-3 font-semibold shadow-lg shadow-fuchsia-500/20"
+                      onClick={() => goSaveSuggestion(s)}
                     >
-                      {r.favorite ? "⭐" : "☆"}
+                      Save to Recipes
                     </button>
 
-                    <Link href={`/recipes/${r.id}`} className="block">
-                      <h2 className="text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
-                      {r.description ? <p className="mt-2 text-white/70 line-clamp-2">{r.description}</p> : null}
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {serves != null ? (
-                          <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Serves {serves}</span>
-                        ) : null}
-                        {r.prep_minutes != null ? (
-                          <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Prep {r.prep_minutes}m</span>
-                        ) : null}
-                        {r.cook_minutes != null ? (
-                          <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Cook {r.cook_minutes}m</span>
-                        ) : null}
-                        {tags.slice(0, 3).map((t) => (
-                          <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Storage summary */}
-                      {showStorageBits ? (
-                        <div className="mt-4 text-white/70">
-                          Have <span className="text-white">{summary.haveCount}</span>/
-                          <span className="text-white">{summary.total}</span> in storage
-                        </div>
-                      ) : null}
-
-                      {showStorageBits && summary.missing.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {summary.missing.slice(0, 2).map((m) => (
-                            <span key={m} className="rounded-full bg-red-500/15 text-red-200 px-3 py-1 text-sm">
-                              missing: {m}
-                            </span>
-                          ))}
-                          {summary.missing.length > 2 ? (
-                            <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
-                              +{summary.missing.length - 2} more
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      {showStorageBits && summary.missing.length === 0 ? (
-                        <div className="mt-3 text-emerald-300 flex items-center gap-2">
-                          <span className="inline-flex items-center justify-center h-5 w-5 rounded bg-emerald-500/20 ring-1 ring-emerald-400/30">
-                            ✓
-                          </span>
-                          No-buy ready (have {summary.total}/{summary.total})
-                        </div>
-                      ) : null}
-                    </Link>
-
-                    {/* Actions */}
-                    <div className="mt-6 flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => (window.location.href = `/recipes/${r.id}/edit`)}
+                    {s.source_url ? (
+                      <a
+                        href={s.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
                       >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteRecipe(r)}
-                        className="rounded-2xl bg-red-600 hover:bg-red-500 px-5 py-3"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                        View source
+                      </a>
+                    ) : (
+                      <span className="text-xs text-white/40">No source URL</span>
+                    )}
                   </div>
-                );
-              })}
+
+                  {s.source_name ? <div className="mt-3 text-xs text-white/40">Source: {s.source_name}</div> : null}
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
