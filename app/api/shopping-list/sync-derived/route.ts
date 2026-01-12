@@ -47,6 +47,10 @@ function stripLeadingMeasurement(raw: string): string {
   return s || normalizeFractionChars(raw).trim();
 }
 
+/**
+ * Identity-preserving: do NOT strip "minced", "chopped", etc.
+ * We only remove “notes/chatter”.
+ */
 function stripTrailingNotes(display: string): string {
   let s = (display || "").trim();
   if (!s) return s;
@@ -76,15 +80,8 @@ function stripTrailingNotes(display: string): string {
     "for serving",
     "for garnish",
     "optional",
-    "chopped",
-    "diced",
-    "minced",
-    "sliced",
-    "grated",
-    "shredded",
     "peeled",
     "seeded",
-    "ground",
     "crushed",
     "drained",
     "rinsed",
@@ -99,7 +96,7 @@ function stripTrailingNotes(display: string): string {
   return shouldStrip ? first : s;
 }
 
-function displayBaseName(raw: string) {
+function displayBaseNameForIdentity(raw: string) {
   const noMeasure = stripLeadingMeasurement(raw);
   const noNotes = stripTrailingNotes(noMeasure);
   return noNotes.trim() || (raw || "").trim();
@@ -114,6 +111,20 @@ function normalizeKey(input: string) {
     .trim();
 }
 
+function toPositiveInt(n: unknown, fallback = 1): number {
+  if (typeof n === "number" && Number.isFinite(n)) {
+    const v = Math.floor(n);
+    return v >= 1 ? v : fallback;
+  }
+  if (typeof n === "string") {
+    const t = n.trim();
+    if (!t) return fallback;
+    const v = Math.floor(Number(t));
+    return Number.isFinite(v) && v >= 1 ? v : fallback;
+  }
+  return fallback;
+}
+
 /** ---------- ingredient extraction ---------- */
 function extractIngredients(recipe: AnyRecord): string[] {
   const candidates = [
@@ -122,7 +133,7 @@ function extractIngredients(recipe: AnyRecord): string[] {
     recipe.ingredients_list,
     recipe.ingredientsText,
     recipe.ingredients_text,
-    recipe.steps_ingredients, // extra fallback, harmless if absent
+    recipe.steps_ingredients,
   ];
 
   for (const val of candidates) {
@@ -176,39 +187,59 @@ export async function POST(req: Request) {
       .map((s: string) => s.trim())
       .filter(Boolean);
 
-    if (recipe_ids.length === 0) {
+    const sideLinesRaw = body?.side_lines;
+    const side_lines: string[] = Array.isArray(sideLinesRaw)
+      ? sideLinesRaw
+          .filter((x: any) => typeof x === "string")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    if (recipe_ids.length === 0 && side_lines.length === 0) {
       return NextResponse.json({
         ok: true,
         added_count: 0,
         revived_count: 0,
+        updated_count: 0,
         added: [],
         revived: [],
-        note: "No recipe ids provided.",
+        updated: [],
+        note: "No recipe ids or side lines provided.",
       });
     }
 
-    // 1) Fetch recipes
-    const { data: recipes, error: recipesErr } = await supabaseServer
-      .from("recipes")
-      .select("*")
-      .in("id", recipe_ids);
+    // 1) Fetch recipes (if any)
+    let recipes: AnyRecord[] = [];
+    if (recipe_ids.length > 0) {
+      const { data, error: recipesErr } = await supabaseServer
+        .from("recipes")
+        .select("*")
+        .in("id", recipe_ids);
 
-    if (recipesErr) {
-      return NextResponse.json(
-        { error: `Failed to load recipes: ${recipesErr.message}` },
-        { status: 500 }
-      );
+      if (recipesErr) {
+        return NextResponse.json(
+          { error: `Failed to load recipes: ${recipesErr.message}` },
+          { status: 500 }
+        );
+      }
+      recipes = (data ?? []) as AnyRecord[];
     }
 
-    // 2) Collect ingredients
-    const allIngredientLines: { line: string; source_recipe_id: string }[] = [];
+    // 2) Collect ingredients (+ sides)
+    const allIngredientLines: { line: string; source_recipe_id: string | null }[] = [];
+
     for (const r of recipes ?? []) {
       const ingredients = extractIngredients(r as AnyRecord);
       for (const ing of ingredients) {
         const line = String(ing ?? "").trim();
-        if (line)
-          allIngredientLines.push({ line, source_recipe_id: (r as any).id });
+        if (line) allIngredientLines.push({ line, source_recipe_id: String((r as any).id) });
       }
+    }
+
+    // Add side lines as ingredient-like lines (no recipe id)
+    for (const s of side_lines) {
+      const line = String(s ?? "").trim();
+      if (line) allIngredientLines.push({ line, source_recipe_id: null });
     }
 
     if (allIngredientLines.length === 0) {
@@ -216,72 +247,81 @@ export async function POST(req: Request) {
         ok: true,
         added_count: 0,
         revived_count: 0,
+        updated_count: 0,
         added: [],
         revived: [],
+        updated: [],
         note:
-          "No ingredients were found on the selected recipes. (They may be stored under a different field/table.)",
+          "No ingredients were found on the selected recipes and no side lines were provided.",
         debug: {
           recipe_ids_count: recipe_ids.length,
+          side_lines_count: side_lines.length,
           recipes_found: (recipes ?? []).length,
         },
       });
     }
 
-    // 3) Normalize + de-dupe within this sync run
-    // NOTE: Your DB schema is: quantity (text), unit (text), source_type (text), is_derived (boolean), dismissed (boolean)
-    const seen = new Set<string>();
-    const toSync: {
-      user_id: string | null;
-      name: string;
-      normalized_name: string;
-      quantity: string | null;
-      unit: string | null;
-      source_type: "derived";
-      source_recipe_id: string | null;
-      is_derived: boolean;
-      checked: boolean;
-      dismissed: boolean;
-    }[] = [];
+    // 3) Count occurrences within this sync run (so derived has quantity)
+    const counts = new Map<
+      string,
+      {
+        normalized_name: string;
+        display_name: string;
+        count: number;
+        any_recipe_id: string | null;
+      }
+    >();
 
     for (const item of allIngredientLines) {
-      const base = displayBaseName(item.line);
+      const base = displayBaseNameForIdentity(item.line);
       const normalized_name = normalizeKey(base);
       if (!normalized_name) continue;
 
-      if (seen.has(normalized_name)) continue;
-      seen.add(normalized_name);
-
-      toSync.push({
-        user_id: null,
-        name: base,
-        normalized_name,
-        quantity: null,
-        unit: null,
-        source_type: "derived",
-        source_recipe_id: item.source_recipe_id ?? null,
-        is_derived: true,
-        checked: false,
-        dismissed: false,
-      });
+      const ex = counts.get(normalized_name);
+      if (!ex) {
+        counts.set(normalized_name, {
+          normalized_name,
+          display_name: base,
+          count: 1,
+          any_recipe_id: item.source_recipe_id ?? null,
+        });
+      } else {
+        ex.count += 1;
+      }
     }
+
+    const toSync = Array.from(counts.values()).map((v) => ({
+      user_id: null as string | null,
+      name: v.display_name,
+      normalized_name: v.normalized_name,
+      quantity: toPositiveInt(v.count, 1), // store count as quantity
+      unit: null as string | null,
+      source_type: "derived" as const,
+      source_recipe_id: v.any_recipe_id ?? null,
+      is_derived: true,
+      checked: false,
+      dismissed: false,
+    }));
 
     if (toSync.length === 0) {
       return NextResponse.json({
         ok: true,
         added_count: 0,
         revived_count: 0,
+        updated_count: 0,
         added: [],
         revived: [],
+        updated: [],
         note: "No usable ingredient lines after cleaning.",
       });
     }
 
-    // 4) Check existing items (active vs dismissed)
+    // 4) Check existing items by normalized_name
     const normalizedToSync = toSync.map((x) => x.normalized_name);
 
     const { data: existing, error: existingErr } = await supabaseServer
       .from("shopping_list_items")
-      .select("id,normalized_name,source_type,dismissed,checked,is_derived")
+      .select("id,normalized_name,source_type,dismissed,checked,is_derived,quantity")
       .in("normalized_name", normalizedToSync);
 
     if (existingErr) {
@@ -291,9 +331,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Active means "currently visible unless user toggles showDismissed"
     const activeSet = new Set<string>();
-    const derivedDismissedByNormalized = new Map<string, string>(); // normalized_name -> id
+    const derivedDismissedByNormalized = new Map<string, string>(); // normalized -> id
+    const activeDerivedByNormalized = new Map<string, { id: string; quantity: any }>(); // normalized -> row
 
     for (const row of existing ?? []) {
       const nn = String((row as any)?.normalized_name ?? "").trim();
@@ -304,21 +344,41 @@ export async function POST(req: Request) {
 
       if (!dismissed) activeSet.add(nn);
 
-      // If a derived item exists but is dismissed, we should revive it instead of claiming "already exists forever"
       if (dismissed && sourceType === "derived") {
-        // keep the first id we see; good enough for revive
         if (!derivedDismissedByNormalized.has(nn)) {
           derivedDismissedByNormalized.set(nn, String((row as any)?.id));
         }
+      }
+
+      if (!dismissed && sourceType === "derived") {
+        activeDerivedByNormalized.set(nn, {
+          id: String((row as any)?.id),
+          quantity: (row as any)?.quantity,
+        });
       }
     }
 
     const toReviveIds: string[] = [];
     const toInsert: typeof toSync = [];
+    const toUpdateActiveDerived: { id: string; quantity: number; name: string }[] = [];
 
     for (const item of toSync) {
+      // If there is an active item with same normalized_name, we do NOT insert a new row.
+      // If it’s active derived, update its quantity to current count.
       if (activeSet.has(item.normalized_name)) {
-        continue; // already active in the list
+        const activeDerived = activeDerivedByNormalized.get(item.normalized_name);
+        if (activeDerived) {
+          const nextQty = toPositiveInt(item.quantity, 1);
+          const prevQty = toPositiveInt(activeDerived.quantity, 1);
+          if (nextQty !== prevQty) {
+            toUpdateActiveDerived.push({
+              id: activeDerived.id,
+              quantity: nextQty,
+              name: item.name,
+            });
+          }
+        }
+        continue;
       }
 
       const reviveId = derivedDismissedByNormalized.get(item.normalized_name);
@@ -330,7 +390,7 @@ export async function POST(req: Request) {
       toInsert.push(item);
     }
 
-    // 5) Revive dismissed derived rows (so sync is visible)
+    // 5) Revive dismissed derived rows
     let revived: any[] = [];
     if (toReviveIds.length > 0) {
       const { data: revivedRows, error: reviveErr } = await supabaseServer
@@ -342,7 +402,9 @@ export async function POST(req: Request) {
           source_type: "derived",
         })
         .in("id", toReviveIds)
-        .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived");
+        .select(
+          "id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity"
+        );
 
       if (reviveErr) {
         return NextResponse.json(
@@ -359,7 +421,9 @@ export async function POST(req: Request) {
       const { data: insertedRows, error: insertErr } = await supabaseServer
         .from("shopping_list_items")
         .insert(toInsert)
-        .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived");
+        .select(
+          "id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity"
+        );
 
       if (insertErr) {
         return NextResponse.json(
@@ -370,10 +434,39 @@ export async function POST(req: Request) {
       inserted = insertedRows ?? [];
     }
 
+    // 7) Update active derived rows (quantity changes only)
+    let updated: any[] = [];
+    if (toUpdateActiveDerived.length > 0) {
+      const updates = await Promise.all(
+        toUpdateActiveDerived.map(async (u) => {
+          const { data, error } = await supabaseServer
+            .from("shopping_list_items")
+            .update({ quantity: u.quantity, name: u.name })
+            .eq("id", u.id)
+            .select(
+              "id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity"
+            )
+            .single();
+
+          return { ok: !error, data, error };
+        })
+      );
+
+      const failures = updates.filter((x) => !x.ok);
+      if (failures.length > 0) {
+        return NextResponse.json(
+          { error: failures[0].error?.message || "Failed to update derived quantities" },
+          { status: 500 }
+        );
+      }
+
+      updated = updates.map((x) => x.data).filter(Boolean);
+    }
+
     const alreadyActiveCount = toSync.length - toReviveIds.length - toInsert.length;
 
     let note = "Synced derived items.";
-    if (inserted.length === 0 && revived.length === 0) {
+    if (inserted.length === 0 && revived.length === 0 && updated.length === 0) {
       note = "All derived items were already active.";
     } else if (inserted.length === 0 && revived.length > 0) {
       note = "Revived previously dismissed derived items.";
@@ -387,22 +480,23 @@ export async function POST(req: Request) {
       ok: true,
       added_count: inserted.length,
       revived_count: revived.length,
+      updated_count: updated.length,
       added: inserted,
       revived,
+      updated,
       note,
       debug: {
         recipe_ids_count: recipe_ids.length,
+        side_lines_count: side_lines.length,
         recipes_found: (recipes ?? []).length,
-        unique_from_recipes: toSync.length,
+        unique_from_recipes_and_sides: toSync.length,
         already_active: alreadyActiveCount,
         revived: revived.length,
         inserted: inserted.length,
+        updated: updated.length,
       },
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Unknown sync error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Unknown sync error" }, { status: 500 });
   }
 }

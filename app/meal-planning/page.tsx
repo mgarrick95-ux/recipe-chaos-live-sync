@@ -1,4 +1,3 @@
-// RecipeChaos MP-PAGE-v6 — meal_count slots + hydration latch + explicit clear (2025-12-28)
 // app/meal-planning/page.tsx
 "use client";
 
@@ -6,7 +5,7 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import BrainCapacityPrompt from "../../components/BrainCapacityPrompt";
+import RcPageShell from "@/components/rc/RcPageShell";
 import { useUIPrefs } from "../../components/UIPrefsProvider";
 import { t } from "@/lib/copy";
 
@@ -72,7 +71,6 @@ function shuffle<T>(arr: T[]) {
   return a;
 }
 
-// Tiny deterministic “rotation” so it changes per week, not per refresh.
 function pickBySeed(lines: string[], seed: string) {
   let n = 0;
   for (let i = 0; i < seed.length; i++) n = (n * 31 + seed.charCodeAt(i)) >>> 0;
@@ -91,10 +89,67 @@ function makeEmptySlots(count: number): Slot[] {
   return Array.from({ length: n }).map(() => ({ slotId: uid(), recipeId: null }));
 }
 
+/** ---------- Sides helpers ---------- */
+type SidesState = string[][]; // index-aligned to slots
+
+function sidesStorageKey(weekStartStr: string) {
+  return `recipechaos_meal_sides_v1:${weekStartStr}`;
+}
+
+function sanitizeSideInput(raw: string) {
+  return (raw || "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeSideForShopping(raw: string) {
+  const s = sanitizeSideInput(raw);
+  if (!s) return "";
+
+  const low = s.toLowerCase();
+  if (low === "salad" || low.includes("salad")) return "salad kit";
+
+  return s;
+}
+
+function uniqKeepOrder(items: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const it of items) {
+    const key = it.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(it);
+    }
+  }
+  return out;
+}
+
+/* =========================
+   UI classes
+========================= */
+
+const btn =
+  "rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50";
+const btnPrimary =
+  "rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 px-4 py-2.5 text-sm font-semibold disabled:opacity-50 shadow-lg shadow-fuchsia-500/20 transition";
+const iconBtn =
+  "rounded-xl bg-white/8 hover:bg-white/12 px-3 py-2 text-xs font-extrabold ring-1 ring-white/10 transition disabled:opacity-50";
+
+const subtleLink =
+  "text-xs font-semibold text-white/55 hover:text-white/80 underline underline-offset-4";
+
+const pill =
+  "rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70";
+
+const compactInput =
+  "rounded-2xl bg-white/5 ring-1 ring-white/10 px-3 py-2 text-sm text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-fuchsia-400/40";
+
 export default function MealPlanningPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { prefs, brainCapacity } = useUIPrefs();
+
+  // build typing workaround for t()
+  const prefsForCopy = prefs as any;
 
   const startParam = searchParams.get("start");
   const initialStart = useMemo(() => {
@@ -124,16 +179,19 @@ export default function MealPlanningPage() {
   const [recipesError, setRecipesError] = useState<string | null>(null);
 
   const [mealCount, setMealCount] = useState<number>(7);
-
   const [slots, setSlots] = useState<Slot[]>(makeEmptySlots(7));
-
   const [status, setStatus] = useState<string>("");
+
+  // Sides (index-aligned with slots)
+  const [sidesByIndex, setSidesByIndex] = useState<SidesState>(() =>
+    Array.from({ length: 7 }).map(() => [])
+  );
+  const [sideDraftByIndex, setSideDraftByIndex] = useState<Record<number, string>>({});
+  const [suggestionsByIndex, setSuggestionsByIndex] = useState<Record<number, string[]>>({});
 
   // Autosave infra
   const savingTimer = useRef<any>(null);
   const lastSavedPayload = useRef<string>("");
-
-  // keep “latest desired save” in a ref so we can flush on navigation/unmount
   const latestPayloadRef = useRef<string>("");
   const mountedRef = useRef<boolean>(false);
 
@@ -149,8 +207,8 @@ export default function MealPlanningPage() {
 
   const isWeekEmpty = selectedIdsForSave.length === 0;
 
-  const pageTitle = t("WEEKLY_TITLE", prefs, brainCapacity);
-  const emptyCopy = t("WEEKLY_EMPTY", prefs, brainCapacity);
+  const pageTitle = t("WEEKLY_TITLE", prefsForCopy, brainCapacity);
+  const emptyCopy = t("WEEKLY_EMPTY", prefsForCopy, brainCapacity);
 
   const flavorLine = useMemo(() => {
     if (prefs.reduceChatter) return "A weekly list. Nothing is due.";
@@ -204,7 +262,7 @@ export default function MealPlanningPage() {
 
   function setCalmStatus(msg: string, autoClearMs?: number) {
     if (prefs.reduceChatter) {
-      setStatus(msg.length > 18 ? t("GENERIC_UPDATED", prefs, brainCapacity) : msg);
+      setStatus(msg.length > 18 ? t("GENERIC_UPDATED", prefsForCopy, brainCapacity) : msg);
     } else {
       setStatus(msg);
     }
@@ -235,7 +293,7 @@ export default function MealPlanningPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: t("WEEKLY_TITLE", prefs, brainCapacity),
+            name: t("WEEKLY_TITLE", prefsForCopy, brainCapacity),
             start_date: parsed.start_date,
             meal_count: parsed.meal_count,
             selected_recipe_ids: parsed.selected_recipe_ids,
@@ -248,20 +306,10 @@ export default function MealPlanningPage() {
       const json = (await res.json().catch(() => null)) as PlanResponse | null;
       if (!res.ok) throw new Error((json as any)?.error || "Save failed");
 
-      // Treat "ignored empty save" as done for this payload to prevent retry spam.
       lastSavedPayload.current = payloadStr;
 
       if (!silent && mountedRef.current) {
-        const brainMsg =
-          brainCapacity === "very_little"
-            ? "Saved."
-            : brainCapacity === "some"
-            ? "Saved."
-            : brainCapacity === "extra"
-            ? "Saved."
-            : "Saved.";
-
-        setCalmStatus(prefs.reduceChatter ? "Saved." : brainMsg, 900);
+        setCalmStatus("Saved.", 900);
       }
     } catch (e: any) {
       if (!silent && mountedRef.current) {
@@ -316,9 +364,7 @@ export default function MealPlanningPage() {
 
         setCalmStatus(prefs.reduceChatter ? "Loading…" : "Loading week…");
 
-        const res = await fetch(`/api/meal-plans/current?start=${weekStartStr}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/meal-plans/current?start=${weekStartStr}`, { cache: "no-store" });
         const json = (await res.json().catch(() => null)) as PlanResponse | null;
         if (!res.ok) throw new Error(json?.error || "Failed to load week");
 
@@ -327,7 +373,6 @@ export default function MealPlanningPage() {
         const ids: string[] = Array.isArray(idsRaw) ? idsRaw.filter((x) => typeof x === "string") : [];
 
         const mc = clampMealCount(plan?.meal_count ?? 7);
-
         if (!alive) return;
 
         setMealCount(mc);
@@ -337,6 +382,22 @@ export default function MealPlanningPage() {
           for (let i = 0; i < next.length; i++) next[i].recipeId = ids[i] ?? null;
           return next;
         });
+
+        // sides: load from localStorage for this week (index-aligned)
+        try {
+          const rawSides = localStorage.getItem(sidesStorageKey(weekStartStr));
+          const parsed = rawSides ? JSON.parse(rawSides) : null;
+          const loaded: SidesState = Array.isArray(parsed)
+            ? parsed.map((x: any) => (Array.isArray(x) ? x.filter((s) => typeof s === "string") : []))
+            : [];
+          const nextSides: SidesState = Array.from({ length: mc }).map((_, i) => loaded[i] ?? []);
+          setSidesByIndex(nextSides);
+        } catch {
+          setSidesByIndex(Array.from({ length: mc }).map(() => []));
+        }
+
+        setSideDraftByIndex({});
+        setSuggestionsByIndex({});
 
         // Seed save refs to loaded plan
         const loadedPayload = JSON.stringify({
@@ -360,6 +421,16 @@ export default function MealPlanningPage() {
     };
   }, [weekStartStr, prefs.reduceChatter]);
 
+  // Persist sides (local, per week)
+  useEffect(() => {
+    if (!weekHydrated) return;
+    try {
+      localStorage.setItem(sidesStorageKey(weekStartStr), JSON.stringify(sidesByIndex));
+    } catch {
+      // ignore
+    }
+  }, [sidesByIndex, weekStartStr, weekHydrated]);
+
   // When mealCount changes via UI, resize slots while preserving existing selections.
   function applyMealCount(nextCount: number) {
     const mc = clampMealCount(nextCount);
@@ -369,6 +440,30 @@ export default function MealPlanningPage() {
       const next: Slot[] = makeEmptySlots(mc);
       for (let i = 0; i < Math.min(prev.length, next.length); i++) {
         next[i].recipeId = prev[i]?.recipeId ?? null;
+      }
+      return next;
+    });
+
+    // keep sides aligned by index
+    setSidesByIndex((prev) => {
+      const next: SidesState = Array.from({ length: mc }).map((_, i) => prev[i] ?? []);
+      return next;
+    });
+
+    setSideDraftByIndex((prev) => {
+      const next: Record<number, string> = {};
+      for (const k of Object.keys(prev)) {
+        const idx = Number(k);
+        if (Number.isFinite(idx) && idx >= 0 && idx < mc) next[idx] = prev[idx];
+      }
+      return next;
+    });
+
+    setSuggestionsByIndex((prev) => {
+      const next: Record<number, string[]> = {};
+      for (const k of Object.keys(prev)) {
+        const idx = Number(k);
+        if (Number.isFinite(idx) && idx >= 0 && idx < mc) next[idx] = prev[idx];
       }
       return next;
     });
@@ -387,8 +482,10 @@ export default function MealPlanningPage() {
   }
 
   async function clearWeek() {
-    // Intentional + persistent clear
     setSlots((prev) => prev.map((s) => ({ ...s, recipeId: null })));
+    setSidesByIndex((prev) => prev.map(() => []));
+    setSideDraftByIndex({});
+    setSuggestionsByIndex({});
 
     const clearedPayload = JSON.stringify({
       start_date: weekStartStr,
@@ -407,6 +504,40 @@ export default function MealPlanningPage() {
       const j = idx + dir;
       if (j < 0 || j >= next.length) return prev;
       [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+
+    setSidesByIndex((prev) => {
+      const next = [...prev];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+
+    setSideDraftByIndex((prev) => {
+      const next = { ...prev };
+      const j = idx + dir;
+      if (j < 0) return prev;
+      const a = next[idx] ?? "";
+      const b = next[j] ?? "";
+      if (a || b) {
+        next[idx] = b;
+        next[j] = a;
+      }
+      return next;
+    });
+
+    setSuggestionsByIndex((prev) => {
+      const next = { ...prev };
+      const j = idx + dir;
+      if (j < 0) return prev;
+      const a = next[idx] ?? [];
+      const b = next[j] ?? [];
+      if ((a && a.length) || (b && b.length)) {
+        next[idx] = b;
+        next[j] = a;
+      }
       return next;
     });
   }
@@ -449,14 +580,78 @@ export default function MealPlanningPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekHydrated]);
 
+  function setSideDraft(idx: number, v: string) {
+    setSideDraftByIndex((p) => ({ ...p, [idx]: v }));
+  }
+
+  function addSide(idx: number, raw: string) {
+    const cleaned = sanitizeSideInput(raw);
+    if (!cleaned) return;
+
+    setSidesByIndex((prev) => {
+      const next = [...prev];
+      const existing = next[idx] ?? [];
+      next[idx] = uniqKeepOrder([...existing, cleaned]);
+      return next;
+    });
+
+    setSideDraft(idx, "");
+  }
+
+  function removeSide(idx: number, side: string) {
+    setSidesByIndex((prev) => {
+      const next = [...prev];
+      next[idx] = (next[idx] ?? []).filter((s) => s !== side);
+      return next;
+    });
+  }
+
+  function suggestSidesForRecipe(recipe: Recipe | null): string[] {
+    if (!recipe) return [];
+    const title = (recipe.title || "").toLowerCase();
+
+    if (title.includes("spaghetti") || title.includes("pasta") || title.includes("lasagna")) {
+      return ["salad", "garlic bread"];
+    }
+    if (title.includes("taco") || title.includes("burrito") || title.includes("mexican")) {
+      return ["salad", "chips", "salsa"];
+    }
+    if (title.includes("steak") || title.includes("chicken") || title.includes("pork")) {
+      return ["salad", "veggies", "potatoes"];
+    }
+    if (title.includes("soup") || title.includes("chili")) {
+      return ["salad", "bread"];
+    }
+    return ["salad", "veggies", "bread"];
+  }
+
+  function runSuggest(idx: number) {
+    const slot = slots[idx];
+    const rid = slot?.recipeId;
+    const recipe = rid ? recipeById.get(rid) ?? null : null;
+    if (!recipe) return;
+
+    const ideas = suggestSidesForRecipe(recipe);
+    setSuggestionsByIndex((p) => ({ ...p, [idx]: ideas }));
+  }
+
   async function syncShoppingList() {
     try {
       setCalmStatus(prefs.reduceChatter ? "Syncing…" : "Sending to shopping list…");
 
+      const sideLines = sidesByIndex
+        .flatMap((arr) => arr ?? [])
+        .map(normalizeSideForShopping)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       const res = await fetch("/api/shopping-list/sync-derived", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipe_ids: selectedIdsForSave }),
+        body: JSON.stringify({
+          recipe_ids: selectedIdsForSave,
+          side_lines: sideLines,
+        }),
       });
 
       const json = await res.json().catch(() => null);
@@ -468,194 +663,301 @@ export default function MealPlanningPage() {
     }
   }
 
+  const header = (
+    <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="min-w-0">
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
+          {pageTitle}{" "}
+          <span className="inline-block align-middle ml-2 h-2.5 w-2.5 rounded-full bg-fuchsia-400 shadow-[0_0_24px_rgba(232,121,249,0.35)]" />
+        </h1>
+
+        <p className="mt-2 text-white/75 text-sm md:text-base">{flavorLine}</p>
+
+        <div className="mt-1 text-xs md:text-sm text-white/55">
+          Week: <span className="text-white/80 font-semibold">{weekStartStr}</span> →{" "}
+          <span className="text-white/80 font-semibold">{weekEndStr}</span>
+          {status ? <span className="text-white/55"> • {status}</span> : null}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={() => goToWeek(addDays(weekStart, -7))} className={btn}>
+          ← Prev
+        </button>
+        <button type="button" onClick={() => goToWeek(new Date())} className={btn}>
+          This week
+        </button>
+        <button type="button" onClick={() => goToWeek(addDays(weekStart, 7))} className={btn}>
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+
+  const anySidesCount = useMemo(() => sidesByIndex.flatMap((x) => x ?? []).length, [sidesByIndex]);
+
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <BrainCapacityPrompt />
+    <RcPageShell header={header}>
+      {/* Top action row */}
+      <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button type="button" onClick={clearWeek} className={btn} disabled={!weekHydrated}>
+              Clear
+            </button>
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 46, margin: 0 }}>{pageTitle}</h1>
-          <p style={{ marginTop: 10, fontSize: 16, opacity: 0.85 }}>{flavorLine}</p>
+            <button
+              type="button"
+              onClick={autoFillWeek}
+              className={btn}
+              disabled={loadingRecipes || !!recipesError || recipes.length === 0 || !weekHydrated}
+            >
+              Auto-fill
+            </button>
 
-          <div style={{ marginTop: 8, opacity: 0.75 }}>
-            Week: <b>{weekStartStr}</b> → <b>{weekEndStr}</b>
-            {status ? <span style={{ marginLeft: 10 }}>• {status}</span> : null}
+            <button
+              type="button"
+              onClick={syncShoppingList}
+              className={btnPrimary}
+              disabled={selectedIdsForSave.length === 0 && anySidesCount === 0}
+              title="Adds ingredients to Shopping List"
+            >
+              Send to shopping list
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-white/60 text-sm">Meals:</span>
+            <button
+              type="button"
+              className={iconBtn}
+              onClick={() => applyMealCount(mealCount - 1)}
+              disabled={!weekHydrated || mealCount <= 0}
+              title="Fewer meals"
+            >
+              −
+            </button>
+            <div className="min-w-[28px] text-center font-extrabold text-white/85">{mealCount}</div>
+            <button
+              type="button"
+              className={iconBtn}
+              onClick={() => applyMealCount(mealCount + 1)}
+              disabled={!weekHydrated || mealCount >= 60}
+              title="More meals"
+            >
+              +
+            </button>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => goToWeek(addDays(weekStart, -7))} style={btnGhost} type="button">
-            ← Prev
-          </button>
-          <button onClick={() => goToWeek(new Date())} style={btnGhost} type="button">
-            This week
-          </button>
-          <button onClick={() => goToWeek(addDays(weekStart, 7))} style={btnGhost} type="button">
-            Next →
-          </button>
-
-          <Link href={`/meal-planning/auto?start=${weekStartStr}`} style={btnDarkLink}>
-            Smart
-          </Link>
-        </div>
+        {isWeekEmpty ? (
+          <div className="mt-3 text-sm text-white/60 whitespace-pre-line">{emptyCopy}</div>
+        ) : null}
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={clearWeek} style={btnGhost} type="button">
-          Clear
-        </button>
-
-        <button
-          onClick={autoFillWeek}
-          style={btnGhost}
-          disabled={loadingRecipes || !!recipesError || recipes.length === 0}
-          type="button"
-        >
-          Auto-fill
-        </button>
-
-        <button onClick={syncShoppingList} style={btnGhost} type="button" disabled={selectedIdsForSave.length === 0}>
-          Send to shopping list
-        </button>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: 6 }}>
-          <span style={{ opacity: 0.8 }}>Meals:</span>
-          <button
-            type="button"
-            style={miniBtn}
-            onClick={() => applyMealCount(mealCount - 1)}
-            disabled={!weekHydrated || mealCount <= 0}
-            title="Fewer meals"
-          >
-            −
-          </button>
-          <div style={{ minWidth: 34, textAlign: "center", fontWeight: 800 }}>{mealCount}</div>
-          <button
-            type="button"
-            style={miniBtn}
-            onClick={() => applyMealCount(mealCount + 1)}
-            disabled={!weekHydrated || mealCount >= 60}
-            title="More meals"
-          >
-            +
-          </button>
-        </div>
-      </div>
-
-      {isWeekEmpty ? (
-        <div style={{ marginTop: 18, opacity: 0.78, whiteSpace: "pre-line" }}>{emptyCopy}</div>
-      ) : null}
-
+      {/* Content */}
       {loadingRecipes ? (
-        <div style={{ marginTop: 18, opacity: 0.7 }}>Loading…</div>
+        <div className="mt-6 text-white/70">Loading…</div>
       ) : recipesError ? (
-        <div style={{ marginTop: 18, color: "salmon" }}>{recipesError}</div>
+        <div className="mt-6 text-red-300">{recipesError}</div>
       ) : (
-        <div
-          style={{
-            marginTop: 18,
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {slots.map((slot, idx) => {
-            const r = slot.recipeId ? recipeById.get(slot.recipeId) : null;
+        <div className="mt-6">
+          {/* List container (like other pages) */}
+          <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 overflow-hidden">
+            {slots.map((slot, idx) => {
+              const r = slot.recipeId ? recipeById.get(slot.recipeId) : null;
+              const sides = sidesByIndex[idx] ?? [];
+              const suggestions = suggestionsByIndex[idx] ?? [];
 
-            return (
-              <div key={slot.slotId} style={card}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 800 }}>Meal {idx + 1}</div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => moveSlot(idx, -1)} style={miniBtn} title="Move up" type="button">
-                      ↑
-                    </button>
-                    <button onClick={() => moveSlot(idx, 1)} style={miniBtn} title="Move down" type="button">
-                      ↓
-                    </button>
+              return (
+                <div
+                  key={slot.slotId}
+                  className={`px-4 py-4 md:px-5 md:py-4 ${
+                    idx === 0 ? "" : "border-t border-white/10"
+                  }`}
+                >
+                  {/* Row header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="text-white/90 font-extrabold tracking-tight text-lg">
+                          Meal {idx + 1}
+                        </div>
+                        {r ? (
+                          <Link href={`/recipes/${r.id}`} className={subtleLink}>
+                            View
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-white/35">—</span>
+                        )}
+                      </div>
+
+                      {!prefs.reduceChatter && r ? (
+                        <div className="mt-1 text-[11px] text-white/35 truncate max-w-[520px]">
+                          {r.id}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className={iconBtn}
+                        onClick={() => moveSlot(idx, -1)}
+                        title="Move up"
+                        disabled={idx === 0}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className={iconBtn}
+                        onClick={() => moveSlot(idx, 1)}
+                        title="Move down"
+                        disabled={idx === slots.length - 1}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Main controls */}
+                  <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+                    {/* Recipe select */}
+                    <div className="min-w-0">
+                      <select
+                        value={slot.recipeId ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value || null;
+                          setSlots((prev) =>
+                            prev.map((s) => (s.slotId === slot.slotId ? { ...s, recipeId: value } : s))
+                          );
+
+                          // clear suggestions when recipe changes
+                          setSuggestionsByIndex((p) => {
+                            const next = { ...p };
+                            delete next[idx];
+                            return next;
+                          });
+                        }}
+                        className="w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                      >
+                        <option value="">{prefs.reduceChatter ? "(none)" : "— none —"}</option>
+                        {recipes.map((rec) => (
+                          <option key={rec.id} value={rec.id}>
+                            {rec.favorite ? "★ " : ""}
+                            {rec.title}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Sides line (compact) */}
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs font-extrabold text-white/65 tracking-wide">Sides</div>
+
+                          <button
+                            type="button"
+                            className={subtleLink}
+                            onClick={() => runSuggest(idx)}
+                            disabled={!r}
+                            title={r ? "Suggest sides" : "Pick a recipe to suggest"}
+                            style={{ opacity: r ? 1 : 0.35, pointerEvents: r ? "auto" : "none" }}
+                          >
+                            Suggest
+                          </button>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {sides.length ? (
+                            sides.map((s) => (
+                              <span key={s} className={pill}>
+                                {s}
+                                <button
+                                  type="button"
+                                  className="ml-2 text-white/55 hover:text-white/85"
+                                  onClick={() => removeSide(idx, s)}
+                                  title="Remove"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-white/40">No sides yet.</span>
+                          )}
+                        </div>
+
+                        {r && suggestions.length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {suggestions.map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                className="rounded-full border border-white/10 bg-white/0 hover:bg-white/5 px-3 py-1 text-xs font-semibold text-white/70 transition"
+                                onClick={() => addSide(idx, s)}
+                                title="Add side"
+                              >
+                                + {s}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            value={sideDraftByIndex[idx] ?? ""}
+                            onChange={(e) => setSideDraft(idx, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                addSide(idx, sideDraftByIndex[idx] ?? "");
+                              }
+                            }}
+                            placeholder="Add a side… (e.g., salad)"
+                            className={`flex-1 ${compactInput}`}
+                          />
+
+                          <button
+                            type="button"
+                            className="rounded-2xl bg-white/10 hover:bg-white/15 ring-1 ring-white/10 px-3 py-2 text-sm font-extrabold text-white/80 transition disabled:opacity-50"
+                            onClick={() => addSide(idx, sideDraftByIndex[idx] ?? "")}
+                            disabled={!sanitizeSideInput(sideDraftByIndex[idx] ?? "")}
+                            title="Add side"
+                          >
+                            Add
+                          </button>
+                        </div>
+
+                        {(() => {
+                          const v = (sideDraftByIndex[idx] ?? "").toLowerCase();
+                          if (!v) return null;
+                          if (v.includes("salad")) {
+                            return (
+                              <div className="mt-2 text-[11px] text-white/35">
+                                Shopping list will use: “salad kit”.
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* right-side micro meta (optional space, keeps list airy) */}
+                    <div className="hidden md:block md:pl-2">
+                      <div className="text-[11px] text-white/35">
+                        {r ? "Picked" : "Not picked"}
+                        {sides.length ? ` • ${sides.length} side${sides.length === 1 ? "" : "s"}` : ""}
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <select
-                  value={slot.recipeId ?? ""}
-                  onChange={(e) => {
-                    const value = e.target.value || null;
-                    setSlots((prev) =>
-                      prev.map((s) => (s.slotId === slot.slotId ? { ...s, recipeId: value } : s))
-                    );
-                  }}
-                  style={select}
-                >
-                  <option value="">{prefs.reduceChatter ? "(none)" : "— none —"}</option>
-                  {recipes.map((rec) => (
-                    <option key={rec.id} value={rec.id}>
-                      {rec.favorite ? "★ " : ""}
-                      {rec.title}
-                    </option>
-                  ))}
-                </select>
-
-                {r ? (
-                  <div style={{ marginTop: 10, opacity: 0.85 }}>
-                    <Link href={`/recipes/${r.id}`} style={{ textDecoration: "underline" }}>
-                      View recipe
-                    </Link>
-                    {!prefs.reduceChatter ? (
-                      <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.6 }}>{r.id}</span>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
-    </div>
+    </RcPageShell>
   );
 }
-
-const btnGhost: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  background: "var(--chip)",
-  color: "var(--text)",
-  cursor: "pointer",
-};
-
-const btnDarkLink: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  background: "rgba(255,255,255,0.14)",
-  color: "var(--text)",
-  textDecoration: "none",
-};
-
-const card: React.CSSProperties = {
-  border: "1px solid var(--border)",
-  borderRadius: 16,
-  padding: 16,
-  background: "var(--card)",
-};
-
-const select: React.CSSProperties = {
-  width: "100%",
-  marginTop: 10,
-  padding: "12px 12px",
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  fontSize: 16,
-  background: "rgba(255,255,255,0.06)",
-  color: "var(--text)",
-};
-
-const miniBtn: React.CSSProperties = {
-  width: 36,
-  height: 36,
-  borderRadius: 10,
-  border: "1px solid var(--border)",
-  background: "rgba(255,255,255,0.06)",
-  color: "var(--text)",
-  cursor: "pointer",
-};
