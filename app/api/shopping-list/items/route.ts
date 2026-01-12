@@ -11,11 +11,34 @@ function normalizeName(input: string) {
     .trim();
 }
 
+// Supabase may return bigint/numeric as string. Accept both.
+function coercePositiveInt(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const n = Math.floor(value);
+    return n > 0 ? n : fallback;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return fallback;
+
+    const n = Math.floor(parsed);
+    return n > 0 ? n : fallback;
+  }
+
+  return fallback;
+}
+
 async function tryInsertWithSourceType(payload: any, source_type: string) {
   const { data, error } = await supabaseServer
     .from("shopping_list_items")
     .insert([{ ...payload, source_type }])
-    .select("id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed")
+    .select(
+      "id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,quantity"
+    )
     .single();
 
   return { data, error };
@@ -24,7 +47,9 @@ async function tryInsertWithSourceType(payload: any, source_type: string) {
 export async function GET() {
   const { data, error } = await supabaseServer
     .from("shopping_list_items")
-    .select("id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed")
+    .select(
+      "id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,quantity"
+    )
     .order("checked", { ascending: true })
     .order("name", { ascending: true });
 
@@ -49,37 +74,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "name is invalid" }, { status: 400 });
     }
 
-    // De-dupe: don’t add if normalized_name already exists.
-    // If it exists but is dismissed, we "revive" it.
-    const { data: existing, error: existingErr } = await supabaseServer
+    const requestedQty = coercePositiveInt(body?.quantity, 1);
+
+    // ✅ Only special-case: revive dismissed exact match
+    const { data: dismissedExisting, error: dismissedErr } = await supabaseServer
       .from("shopping_list_items")
-      .select("id,dismissed")
+      .select(
+        "id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,quantity"
+      )
       .eq("normalized_name", normalized)
+      .eq("dismissed", true)
       .limit(1);
 
-    if (existingErr) {
-      return NextResponse.json({ error: existingErr.message }, { status: 500 });
+    if (dismissedErr) {
+      return NextResponse.json({ error: dismissedErr.message }, { status: 500 });
     }
 
-    if (existing && existing.length > 0) {
-      const ex = existing[0] as any;
-      if (ex.dismissed === true) {
-        const { data: revived, error: reviveErr } = await supabaseServer
-          .from("shopping_list_items")
-          .update({ dismissed: false, checked: false, name: nameRaw })
-          .eq("id", ex.id)
-          .select("id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed")
-          .single();
+    if (dismissedExisting && dismissedExisting.length > 0) {
+      const ex = dismissedExisting[0] as any;
 
-        if (reviveErr) {
-          return NextResponse.json({ error: reviveErr.message }, { status: 500 });
-        }
-        return NextResponse.json({ item: revived }, { status: 200 });
+      const existingQty = coercePositiveInt(ex.quantity, 0);
+      const reviveQty = existingQty > 0 ? existingQty : requestedQty;
+
+      const { data: revived, error: reviveErr } = await supabaseServer
+        .from("shopping_list_items")
+        .update({
+          dismissed: false,
+          checked: false,
+          quantity: reviveQty,
+          name: nameRaw,
+        })
+        .eq("id", ex.id)
+        .select(
+          "id,user_id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,quantity"
+        )
+        .single();
+
+      if (reviveErr) {
+        return NextResponse.json({ error: reviveErr.message }, { status: 500 });
       }
 
-      return NextResponse.json({ note: "Item already exists", item: null }, { status: 200 });
+      return NextResponse.json(
+        { item: revived, note: "Revived existing item" },
+        { status: 200 }
+      );
     }
 
+    // ✅ Always insert; never "conflict"
     const payload = {
       user_id: null, // single-user mode
       name: nameRaw,
@@ -87,9 +128,10 @@ export async function POST(req: Request) {
       source_recipe_id: null,
       checked: false,
       dismissed: false,
+      quantity: requestedQty,
     };
 
-    // Try "manual" first. If your DB only allows "derived", fallback to "derived".
+    // Try manual; fallback to derived if constrained
     let inserted: any = null;
 
     const first = await tryInsertWithSourceType(payload, "manual");
@@ -97,10 +139,16 @@ export async function POST(req: Request) {
       inserted = first.data;
     } else {
       const msg = String(first.error.message || "");
-      if (msg.includes("source_type") && msg.includes("violates check constraint")) {
+      if (
+        msg.includes("source_type") &&
+        msg.includes("violates check constraint")
+      ) {
         const second = await tryInsertWithSourceType(payload, "derived");
         if (second.error) {
-          return NextResponse.json({ error: second.error.message }, { status: 500 });
+          return NextResponse.json(
+            { error: second.error.message },
+            { status: 500 }
+          );
         }
         inserted = second.data;
       } else {
@@ -110,6 +158,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ item: inserted }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Unknown error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }
