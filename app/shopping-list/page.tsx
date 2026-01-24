@@ -281,7 +281,7 @@ function cleanParentheticals(s: string): string {
       const normalized = inside
         .replace(/\s+/g, " ")
         .trim()
-        .replace(/^[-–—]\s*/, "");
+        .replace(/^[-ΓÇôΓÇö]\s*/, "");
       return ` (${normalized})`;
     }
     return "";
@@ -358,7 +358,7 @@ const CONTAINER_WORDS = new Set([
   "bunches",
 ]);
 
-// Words that indicate a fundamentally different product (don’t match)
+// Words that indicate a fundamentally different product (donΓÇÖt match)
 const DIFFERENT_PRODUCT_MARKERS = new Set([
   "powder",
   "powdered",
@@ -543,7 +543,7 @@ function parseDisplayParts(raw: string): { name: string; meta: string } {
   if (!s) return { name: "", meta: "" };
 
   s = s.replace(/\s+/g, " ").trim();
-  s = s.replace(/^[-•*]+\s*/, "").trim();
+  s = s.replace(/^[-ΓÇó*]+\s*/, "").trim();
 
   const metaParts: string[] = [];
 
@@ -605,7 +605,7 @@ function parseDisplayParts(raw: string): { name: string; meta: string } {
   const meta = metaParts
     .map((m) => m.trim())
     .filter(Boolean)
-    .join(" • ");
+    .join(" ΓÇó ");
 
   return { name: s.trim(), meta };
 }
@@ -771,7 +771,7 @@ export default function ShoppingListPage() {
   // Already-have reminders / decisions
   const [dupReviewOpen, setDupReviewOpen] = useState(false);
   const [dupIgnoreMap, setDupIgnoreMap] = useState<Record<string, number>>({});
-  const [dupResolved, setDupResolved] = useState<Record<string, true>>({}); // session-only "handled"
+  const [dupResolved, setDupResolved] = useState<Record<string, boolean>>({}); // session-only "handled"
 
   const [dupRemindMode, setDupRemindMode] = useState<DupRemindMode>("off");
   const [dupOffSnapshot, setDupOffSnapshot] = useState<string[]>([]);
@@ -781,7 +781,7 @@ export default function ShoppingListPage() {
   const [burnSkipConfirm, setBurnSkipConfirm] = useState(false);
   const [burnDontAskAgainChecked, setBurnDontAskAgainChecked] = useState(false);
 
-  // ✅ Simple Yes/No duplicate prompt for manual add
+  // Γ£à Simple Yes/No duplicate prompt for manual add
   const [addDupPrompt, setAddDupPrompt] = useState<AddDuplicatePrompt | null>(
     null
   );
@@ -798,7 +798,7 @@ export default function ShoppingListPage() {
   const [groupQtyOpenKey, setGroupQtyOpenKey] = useState<string | null>(null);
   const [groupQtyAnchor, setGroupQtyAnchor] = useState<AnchorRect | null>(null);
 
-  // Action menu popover (…)
+  // Action menu popover (ΓÇª)
   const [menuOpenKey, setMenuOpenKey] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<AnchorRect | null>(null);
 
@@ -922,7 +922,7 @@ export default function ShoppingListPage() {
     }
   }, []);
 
-  // ✅ Canonical group key: fixes “milk carton” vs “milk” everywhere.
+  // Γ£à Canonical group key: fixes ΓÇ£milk cartonΓÇ¥ vs ΓÇ£milkΓÇ¥ everywhere.
   function groupKeyForDisplayName(rawName: string): string {
     const base = displayBaseName(rawName || "");
     const toks = tokensForName(base);
@@ -1090,7 +1090,7 @@ export default function ShoppingListPage() {
     if (ids.length === 0) return;
 
     closeAllPopovers();
-    setStatus("Burning…");
+    setStatus("BurningΓÇª");
     await deleteMany(ids);
     setStatus("");
     setBurnPromptOpen(false);
@@ -1109,7 +1109,7 @@ export default function ShoppingListPage() {
     const allCrossed = activeItems.every((i) => i.checked);
     const next = !allCrossed;
 
-    setStatus(next ? "Crossing off…" : "Undoing…");
+    setStatus(next ? "Crossing offΓÇª" : "UndoingΓÇª");
     await patchMany(
       activeItems.map((i) => i.id),
       { checked: next }
@@ -1122,7 +1122,7 @@ export default function ShoppingListPage() {
 
   const visibleItems = useMemo(() => items, [items]);
 
-  // ✅ KEY FIX: group by canonical key (milk + milk carton collapse to one row)
+  // Γ£à KEY FIX: group by canonical key (milk + milk carton collapse to one row)
   const groupedByCategory = useMemo(() => {
     const groupMap = new Map<string, Item[]>();
 
@@ -1205,7 +1205,7 @@ export default function ShoppingListPage() {
     const ids = info?.ids || [];
     if (ids.length === 0) return;
 
-    setStatus("Updating…");
+    setStatus("UpdatingΓÇª");
     await patchMany(ids, { checked: next });
     setStatus("");
 
@@ -1215,7 +1215,7 @@ export default function ShoppingListPage() {
     maybePromptBurnIfAllCrossed(nextActive);
   }
 
-  // Storage signatures for “already have it”
+  // Storage signatures for ΓÇ£already have itΓÇ¥
   const storageSignatures = useMemo(() => {
     const sigs: {
       canonical: string;
@@ -1358,7 +1358,7 @@ export default function ShoppingListPage() {
     setDupReviewOpen(true);
   }
 
-  function maybeAutoCloseDecisions(nextResolved: Record<string, true>) {
+  function maybeAutoCloseDecisions(nextResolved: Record<string, boolean>) {
     const left = duplicateGroupsRaw.filter(
       (d) => !d.isIgnored && !nextResolved[d.canon]
     );
@@ -1372,7 +1372,7 @@ export default function ShoppingListPage() {
       return next;
     });
 
-    setStatus("Removing…");
+    setStatus("RemovingΓÇª");
     await deleteMany(listItems.map((i) => i.id));
     setStatus("");
   }
@@ -1512,7 +1512,7 @@ export default function ShoppingListPage() {
     const next = Math.max(1, current + delta);
     if (next === current) return;
 
-    setStatus("Updating…");
+    setStatus("UpdatingΓÇª");
     await patchItem(item.id, { quantity: next });
     setStatus("");
   }
@@ -1539,14 +1539,14 @@ export default function ShoppingListPage() {
 
     if (
       !confirm(
-        `Merge ${g.items.length} entries into one quantity (×${total})?\n\nThis will delete the extra entries.`
+        `Merge ${g.items.length} entries into one quantity (├ù${total})?\n\nThis will delete the extra entries.`
       )
     ) {
       return;
     }
 
     closeAllPopovers();
-    setStatus("Merging…");
+    setStatus("MergingΓÇª");
     await patchItem(keeper.id, { quantity: total });
     await deleteMany(extras.map((x) => x.id));
     setStatus("");
@@ -1556,7 +1556,7 @@ export default function ShoppingListPage() {
     const ids = g.items.map((i) => i.id);
     if (ids.length === 0) return;
 
-    setStatus("Updating…");
+    setStatus("UpdatingΓÇª");
     await patchMany(ids, { checked: next });
     setStatus("");
 
@@ -1571,7 +1571,7 @@ export default function ShoppingListPage() {
     | { kind: "same"; existing: Item }
     | { kind: "variant"; existing: Item };
 
-  // ✅ Match rules:
+  // Γ£à Match rules:
   // - "same": exact canonical or safe subset (e.g., "milk" vs "milk carton") AND not a different-product case
   // - "variant": same base family but should be its own row if user says Yes (e.g., "milk" vs "whole milk")
   // - "none": no prompt
@@ -1663,7 +1663,7 @@ export default function ShoppingListPage() {
 
   async function addManualProceed(name: string) {
     closeAllPopovers();
-    setStatus("Adding…");
+    setStatus("AddingΓÇª");
 
     try {
       const res = await fetch("/api/shopping-list/items", {
@@ -1702,7 +1702,7 @@ export default function ShoppingListPage() {
     const name = newItemName.trim();
     if (!name) return;
 
-    // ✅ client-side match first
+    // Γ£à client-side match first
     const match = findExistingMatchForManualAdd(name);
     if (match.kind === "same") {
       setAddDupPrompt({
@@ -1747,13 +1747,13 @@ export default function ShoppingListPage() {
         <p className="mt-2 text-white/75 text-sm md:text-base">
           Items:{" "}
           <span className="text-white/85 font-semibold">{totalVisibleCount}</span>{" "}
-          • Total qty:{" "}
+          ΓÇó Total qty:{" "}
           <span className="text-white/85 font-semibold">{totalVisibleQty}</span>{" "}
-          • Crossed off:{" "}
+          ΓÇó Crossed off:{" "}
           <span className="text-white/85 font-semibold">
             {crossedOffVisibleCount}
           </span>
-          {status ? <span className="text-white/55"> • {status}</span> : null}
+          {status ? <span className="text-white/55"> ΓÇó {status}</span> : null}
         </p>
 
         <div className="mt-1 text-xs md:text-sm text-white/55">
@@ -1782,7 +1782,7 @@ export default function ShoppingListPage() {
               type="button"
               className={btnSm}
               onClick={openDecisions}
-              title="Open already-have decisions (quiet — no changes unless you choose)"
+              title="Open already-have decisions (quiet ΓÇö no changes unless you choose)"
             >
               Decisions
             </button>
@@ -1792,7 +1792,7 @@ export default function ShoppingListPage() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <Link href="/meal-planning" className={btn}>
-          ← Meal Planning
+          ΓåÉ Meal Planning
         </Link>
 
         <button
@@ -1831,7 +1831,7 @@ export default function ShoppingListPage() {
     <RcPageShell header={header}>
       <div ref={pageRootRef} />
 
-      {/* ✅ Simple Yes/No duplicate prompt */}
+      {/* Γ£à Simple Yes/No duplicate prompt */}
       {addDupPrompt?.open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-6"
@@ -1850,7 +1850,7 @@ export default function ShoppingListPage() {
               <span className="text-white/85 font-semibold">
                 {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
               </span>{" "}
-              already in list… do you need this one too?
+              already in listΓÇª do you need this one too?
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2 flex-wrap">
@@ -1879,7 +1879,7 @@ export default function ShoppingListPage() {
                       return;
                     }
 
-                    setStatus("Updating…");
+                    setStatus("UpdatingΓÇª");
                     await patchItem(id, { quantity: itemQty(latest) + 1 });
                     setStatus("");
                     return;
@@ -1936,7 +1936,7 @@ export default function ShoppingListPage() {
           <input
             value={newItemName}
             onChange={(e) => setNewItemName(e.target.value)}
-            placeholder="Add item… (e.g., milk)"
+            placeholder="Add itemΓÇª (e.g., milk)"
             className="w-full md:flex-1 rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
             onKeyDown={(e) => {
               if (e.key === "Enter") addManual();
@@ -1952,12 +1952,12 @@ export default function ShoppingListPage() {
           </button>
         </div>
         <div className="mt-2 text-xs text-white/55">
-          Add is immediate. If it matches something, you’ll get one Yes/No choice.
+          Add is immediate. If it matches something, youΓÇÖll get one Yes/No choice.
         </div>
       </div>
 
       {loading ? (
-        <div className="mt-6 text-white/70">Loading…</div>
+        <div className="mt-6 text-white/70">LoadingΓÇª</div>
       ) : (
         <div className="mt-6 grid gap-5">
           {CATEGORY_ORDER.map((cat) => {
@@ -2088,7 +2088,7 @@ export default function ShoppingListPage() {
                                 else openGroupQtyPopover(g.key, ev);
                               }}
                             >
-                              ×{groupQty}
+                              ├ù{groupQty}
                             </button>
 
                             <button
@@ -2097,7 +2097,7 @@ export default function ShoppingListPage() {
                               title="Actions"
                               onClick={(ev) => openMenuPopover(g.key, ev)}
                             >
-                              …
+                              ΓÇª
                             </button>
                           </div>
                         </div>
@@ -2121,7 +2121,7 @@ export default function ShoppingListPage() {
                                 Multiple entries
                               </div>
                               <div className="mt-1 text-xs text-white/55">
-                                Merge to edit quantity (doesn’t happen automatically).
+                                Merge to edit quantity (doesnΓÇÖt happen automatically).
                               </div>
 
                               <div className="mt-3 flex items-center justify-end gap-2">
@@ -2181,7 +2181,7 @@ export default function ShoppingListPage() {
                                 return (
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="text-sm font-extrabold text-white/85">
-                                      Qty: ×{q}
+                                      Qty: ├ù{q}
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <button
@@ -2189,7 +2189,7 @@ export default function ShoppingListPage() {
                                         className={btnSm}
                                         onClick={() => adjustQty(it, -1)}
                                       >
-                                        −
+                                        ΓêÆ
                                       </button>
                                       <button
                                         type="button"
@@ -2281,7 +2281,7 @@ export default function ShoppingListPage() {
                                     const ids = g.items.map((i) => i.id);
                                     setMenuOpenKey(null);
                                     setMenuAnchor(null);
-                                    setStatus("Removing…");
+                                    setStatus("RemovingΓÇª");
                                     deleteMany(ids).finally(() => setStatus(""));
                                   }}
                                 >
@@ -2400,7 +2400,7 @@ export default function ShoppingListPage() {
                 checked={burnDontAskAgainChecked}
                 onChange={(e) => setBurnDontAskAgainChecked(e.target.checked)}
               />
-              Don’t ask again
+              DonΓÇÖt ask again
             </label>
 
             <div className="mt-6 flex items-center justify-end gap-2 flex-wrap">
@@ -2488,7 +2488,7 @@ export default function ShoppingListPage() {
               </div>
 
               <div className="text-xs text-white/55">
-                This doesn’t change your list — it just clears highlights.
+                This doesnΓÇÖt change your list ΓÇö it just clears highlights.
               </div>
             </div>
           </div>
@@ -2557,9 +2557,9 @@ export default function ShoppingListPage() {
                         const qtyLabel = qty
                           ? `${qty}${unit ? ` ${unit}` : ""}`
                           : "";
-                        return qtyLabel ? `${loc} • ${qtyLabel}` : `${loc}`;
+                        return qtyLabel ? `${loc} ΓÇó ${qtyLabel}` : `${loc}`;
                       })
-                      .join(" · ");
+                      .join(" ┬╖ ");
 
                     return (
                       <div

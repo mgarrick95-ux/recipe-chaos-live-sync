@@ -23,13 +23,21 @@ export async function POST() {
       );
     }
 
+    // If no items, return a calm empty response (no AI call)
+    if (!data || data.length === 0) {
+      return NextResponse.json({
+        ideas:
+          "Your pantry/freezer looks empty right now. Add a few items and I’ll suggest a plan.",
+      });
+    }
+
     // 2️⃣ Build a prompt for the AI
     const pantryText = data
       .map(
-        (item) =>
+        (item: any) =>
           `${item.name} — Qty: ${item.quantity ?? "?"}, Meals: ${
             item.total_meals ?? "?"
-          }, Category: ${item.category ?? "?"}, Age: ${
+          }, Category: ${item.category ?? "?"}, Stored: ${
             item.stored_on ?? "?"
           }, Leftover: ${item.is_leftover ? "Yes" : "No"}`
       )
@@ -58,10 +66,12 @@ Keep it short, friendly, and practical. No fancy ingredients not in the list.
       temperature: 0.7,
     });
 
-    const ideas = completion.choices[0].message.content;
+    const ideas =
+      completion.choices?.[0]?.message?.content?.trim() ||
+      "No ideas returned. Try again.";
 
     // 4️⃣ Send ideas back
-    return NextResponse.json({ ideas: mealIdeasArray });
+    return NextResponse.json({ ideas });
   } catch (err) {
     console.error(err);
     return NextResponse.json(

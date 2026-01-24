@@ -1,6 +1,7 @@
 "use client";
 
-export { supabase, hasSupabase } from "@/lib/supabaseClient";
+import { supabase, hasSupabase } from "@/lib/supabaseClient";
+export { supabase, hasSupabase };
 
 export type Stock = { id: string; name: string; qty: number; unit?: string };
 export type Reservation = {
@@ -44,37 +45,31 @@ export async function loadAll() {
 
 export async function upsertPantry(item: Omit<Stock, "id"> & Partial<Stock>) {
   if (!hasSupabase || !supabase) return;
-
   await supabase.from("pantry").upsert(item, { onConflict: "id" });
 }
 
 export async function deletePantry(id: string) {
   if (!hasSupabase || !supabase) return;
-
   await supabase.from("pantry").delete().eq("id", id);
 }
 
 export async function upsertFreezer(item: Omit<Stock, "id"> & Partial<Stock>) {
   if (!hasSupabase || !supabase) return;
-
   await supabase.from("freezer").upsert(item, { onConflict: "id" });
 }
 
 export async function deleteFreezer(id: string) {
   if (!hasSupabase || !supabase) return;
-
   await supabase.from("freezer").delete().eq("id", id);
 }
 
 export async function addReservation(res: Reservation) {
   if (!hasSupabase || !supabase) return;
-
   await supabase.from("reservations").insert(res);
 }
 
 export async function removeReservation(id: string) {
   if (!hasSupabase || !supabase) return;
-
   await supabase.from("reservations").delete().eq("id", id);
 }
 
@@ -85,39 +80,22 @@ type RealtimeHandlers = {
 };
 
 export function subscribeRealtime(handlers: RealtimeHandlers) {
-  if (!hasSupabase || !supabase) {
-    return () => {};
-  }
+  if (!hasSupabase || !supabase) return () => {};
 
   const channel = supabase
     .channel("recipechaos-sync")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "pantry" },
-      async () => {
-        const { data } = await supabase.from("pantry").select("*").order("name");
-        handlers.onPantry((data || []) as Stock[]);
-      }
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "freezer" },
-      async () => {
-        const { data } = await supabase.from("freezer").select("*").order("name");
-        handlers.onFreezer((data || []) as Stock[]);
-      }
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "reservations" },
-      async () => {
-        const { data } = await supabase
-          .from("reservations")
-          .select("*")
-          .order("date");
-        handlers.onReservations((data || []) as Reservation[]);
-      }
-    )
+    .on("postgres_changes", { event: "*", schema: "public", table: "pantry" }, async () => {
+      const { data } = await supabase.from("pantry").select("*").order("name");
+      handlers.onPantry((data || []) as Stock[]);
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "freezer" }, async () => {
+      const { data } = await supabase.from("freezer").select("*").order("name");
+      handlers.onFreezer((data || []) as Stock[]);
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "reservations" }, async () => {
+      const { data } = await supabase.from("reservations").select("*").order("date");
+      handlers.onReservations((data || []) as Reservation[]);
+    })
     .subscribe();
 
   return () => {
