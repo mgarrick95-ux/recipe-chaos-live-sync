@@ -1,4 +1,3 @@
-// app/recipes/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -301,12 +300,6 @@ export default function RecipesPage() {
     setSortMode("newest");
   }
 
-  const storageStatusText = useMemo(() => {
-    if (loadingStorage) return "loading…";
-    if (storageError) return `unavailable (${storageError})`;
-    return "Pantry & Freezer";
-  }, [loadingStorage, storageError]);
-
   const suggested = useMemo(() => {
     const base = generateSuggestedRecipes({
       recipes,
@@ -362,22 +355,7 @@ export default function RecipesPage() {
                 <span className="inline-block align-middle ml-2 h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_30px_rgba(232,121,249,0.35)]" />
               </h1>
 
-              <p className="mt-3 text-white/75 text-lg">
-                Your personal recipe vault. The ones that survived real life.
-              </p>
-
-              <div className="mt-3 text-white/50 text-sm">
-                <span className="text-white/40">Pantry link:</span>{" "}
-                <Link
-                  href="/frostpantry"
-                  className="underline underline-offset-4 text-white/70 hover:text-white"
-                >
-                  {storageStatusText}
-                </Link>
-                {!loadingStorage && !storageError ? (
-                  <span className="text-white/40"> • loaded {storage.length} items</span>
-                ) : null}
-              </div>
+              <p className="mt-3 text-white/75 text-lg">Let’s not overthink dinner.</p>
 
               <div className="mt-6 flex items-center gap-2 flex-wrap">
                 <button
@@ -610,11 +588,7 @@ export default function RecipesPage() {
                           {showStorageBits ? (
                             <div className={`mt-4 text-sm ${inventoryClass}`}>
                               Have{" "}
-                              <span
-                                className={
-                                  inventoryToneState === "good" ? "font-semibold" : "font-medium"
-                                }
-                              >
+                              <span className={inventoryToneState === "good" ? "font-semibold" : "font-medium"}>
                                 {summary.haveCount}/{summary.total}
                               </span>{" "}
                               in Pantry &amp; Freezer
