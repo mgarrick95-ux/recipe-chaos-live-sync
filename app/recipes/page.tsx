@@ -93,6 +93,70 @@ function extractInstructionsFromRecipe(r: Recipe): string[] {
   return toStringArray(r.instructions ?? r.steps);
 }
 
+function PillToggle({
+  checked,
+  onChange,
+  disabled,
+  label,
+  icon,
+  helper,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  label: string;
+  icon: string;
+  helper?: string;
+  ariaLabel?: string;
+}) {
+  const base =
+    "group inline-flex select-none items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold ring-1 transition";
+  const on =
+    "bg-white/15 ring-white/20 text-white shadow-[0_0_24px_rgba(232,121,249,0.18)]";
+  const off = "bg-white/5 ring-white/10 text-white/85 hover:bg-white/10";
+  const dis = "opacity-50 cursor-not-allowed";
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={ariaLabel ?? label}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return;
+          onChange(!checked);
+        }}
+        className={[
+          base,
+          checked ? on : off,
+          disabled ? dis : "cursor-pointer",
+        ].join(" ")}
+      >
+        <span className="text-base leading-none">{icon}</span>
+        <span>{label}</span>
+
+        <span
+          className={[
+            "ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold ring-1",
+            checked
+              ? "bg-fuchsia-500/60 ring-white/15 text-white"
+              : "bg-white/5 ring-white/10 text-white/60",
+          ].join(" ")}
+        >
+          {checked ? "ON" : "OFF"}
+        </span>
+      </button>
+
+      {helper ? (
+        <div className="text-xs text-white/50 pl-1">{helper}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function RecipesPage() {
   const [tab, setTab] = useState<Tab>("mine");
 
@@ -266,7 +330,9 @@ export default function RecipesPage() {
   async function toggleFavorite(recipe: Recipe) {
     const prev = Boolean(recipe.favorite);
 
-    setRecipes((all) => all.map((r) => (r.id === recipe.id ? { ...r, favorite: !prev } : r)));
+    setRecipes((all) =>
+      all.map((r) => (r.id === recipe.id ? { ...r, favorite: !prev } : r))
+    );
 
     const res = await fetch(`/api/recipes/${recipe.id}`, {
       method: "PATCH",
@@ -275,7 +341,9 @@ export default function RecipesPage() {
     });
 
     if (!res.ok) {
-      setRecipes((all) => all.map((r) => (r.id === recipe.id ? { ...r, favorite: prev } : r)));
+      setRecipes((all) =>
+        all.map((r) => (r.id === recipe.id ? { ...r, favorite: prev } : r))
+      );
       alert("Could not update favorite.");
     }
   }
@@ -337,6 +405,13 @@ export default function RecipesPage() {
       ? `/recipes/add/manual?${qp.toString()}`
       : `/recipes/add/manual`;
   }
+
+  const cookItNowDisabled = loadingStorage || Boolean(storageError);
+  const cookItNowHelper = cookItNowDisabled
+    ? "Needs pantry access."
+    : noBuyOnly
+      ? "Pantry’s got this."
+      : "Only show recipes you can make right now.";
 
   return (
     <div className="min-h-screen bg-[#050816] text-white">
@@ -424,7 +499,7 @@ export default function RecipesPage() {
           <>
             {/* Controls */}
             <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-wrap items-start gap-4">
                 <div className="flex flex-col gap-2">
                   <input
                     value={query}
@@ -458,38 +533,32 @@ export default function RecipesPage() {
                 </button>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-start gap-6 text-white/80">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={favoritesOnly}
-                    onChange={(e) => setFavoritesOnly(e.target.checked)}
-                    className="h-4 w-4 accent-fuchsia-500"
-                  />
-                  Favorites only
-                </label>
+              <div className="mt-5 flex flex-wrap items-start gap-3">
+                <PillToggle
+                  checked={favoritesOnly}
+                  onChange={setFavoritesOnly}
+                  label="Favorites"
+                  icon="⭐"
+                  helper={favoritesOnly ? "Only the keepers." : "Show starred recipes only."}
+                  ariaLabel="Favorites filter"
+                />
 
-                <div className="flex flex-col gap-1">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={noBuyOnly}
-                      onChange={(e) => setNoBuyOnly(e.target.checked)}
-                      disabled={loadingStorage || Boolean(storageError)}
-                      className="h-4 w-4 accent-fuchsia-500 disabled:opacity-50"
-                    />
-                    No-buy only
-                  </label>
-
-                  {noBuyOnly && !loadingStorage && !storageError ? (
-                    <div className="text-xs text-white/55 pl-6">Pantry’s got this.</div>
-                  ) : null}
-
-                  {storageError ? (
-                    <div className="text-xs text-white/40 pl-6">(No-buy needs pantry storage)</div>
-                  ) : null}
-                </div>
+                <PillToggle
+                  checked={noBuyOnly}
+                  onChange={setNoBuyOnly}
+                  disabled={cookItNowDisabled}
+                  label="Cook it now"
+                  icon="🔥"
+                  helper={cookItNowHelper}
+                  ariaLabel="Cook it now filter"
+                />
               </div>
+
+              {storageError ? (
+                <div className="mt-3 text-xs text-white/40">
+                  Pantry check unavailable: {storageError}
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-8">
@@ -502,7 +571,9 @@ export default function RecipesPage() {
               ) : filtered.length === 0 ? (
                 <div className="text-white/55">
                   <div className="font-semibold text-white/70">No matches.</div>
-                  <div className="mt-1 text-sm text-white/50">Try fewer words or a different vibe.</div>
+                  <div className="mt-1 text-sm text-white/50">
+                    Try fewer words or a different vibe.
+                  </div>
                 </div>
               ) : (
                 <div className="grid gap-6 sm:grid-cols-2">
@@ -518,7 +589,8 @@ export default function RecipesPage() {
                       allInStock: false,
                     };
 
-                    const showStorageBits = !loadingStorage && !storageError && summary.total > 0;
+                    const showStorageBits =
+                      !loadingStorage && !storageError && summary.total > 0;
 
                     // Inventory indicator (LOCKED behavior): no missing badges, no “ready” banners.
                     // Color encodes confidence: green (most/all), amber (some), rusty orange (low).
@@ -543,7 +615,10 @@ export default function RecipesPage() {
                     }
 
                     return (
-                      <div key={r.id} className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
+                      <div
+                        key={r.id}
+                        className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10"
+                      >
                         <button
                           type="button"
                           onClick={(e) => {
@@ -559,14 +634,20 @@ export default function RecipesPage() {
                         </button>
 
                         <Link href={`/recipes/${r.id}`} className="block">
-                          <h2 className="text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
+                          <h2 className="text-4xl font-extrabold tracking-tight pr-10">
+                            {r.title}
+                          </h2>
                           {r.description ? (
-                            <p className="mt-2 text-white/70 line-clamp-2">{r.description}</p>
+                            <p className="mt-2 text-white/70 line-clamp-2">
+                              {r.description}
+                            </p>
                           ) : null}
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             {serves != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Serves {serves}</span>
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                                Serves {serves}
+                              </span>
                             ) : null}
                             {r.prep_minutes != null ? (
                               <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
@@ -579,7 +660,10 @@ export default function RecipesPage() {
                               </span>
                             ) : null}
                             {tags.slice(0, 3).map((t) => (
-                              <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                              <span
+                                key={t}
+                                className="rounded-full bg-white/10 px-3 py-1 text-sm"
+                              >
                                 {t}
                               </span>
                             ))}
@@ -588,7 +672,13 @@ export default function RecipesPage() {
                           {showStorageBits ? (
                             <div className={`mt-4 text-sm ${inventoryClass}`}>
                               Have{" "}
-                              <span className={inventoryToneState === "good" ? "font-semibold" : "font-medium"}>
+                              <span
+                                className={
+                                  inventoryToneState === "good"
+                                    ? "font-semibold"
+                                    : "font-medium"
+                                }
+                              >
                                 {summary.haveCount}/{summary.total}
                               </span>{" "}
                               in Pantry &amp; Freezer
@@ -599,7 +689,9 @@ export default function RecipesPage() {
                         <div className="mt-6 flex items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => (window.location.href = `/recipes/${r.id}/edit`)}
+                            onClick={() =>
+                              (window.location.href = `/recipes/${r.id}/edit`)
+                            }
                             className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
                           >
                             Edit
@@ -648,8 +740,12 @@ export default function RecipesPage() {
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">Never suggest (comma-separated)</div>
-                  <div className="mt-2 text-xs text-white/60">Example: kale, chickpeas, capers, alfredo, sausage</div>
+                  <div className="text-sm font-bold text-white/90">
+                    Never suggest (comma-separated)
+                  </div>
+                  <div className="mt-2 text-xs text-white/60">
+                    Example: kale, chickpeas, capers, alfredo, sausage
+                  </div>
 
                   <input
                     value={avoidRaw}
@@ -662,15 +758,24 @@ export default function RecipesPage() {
                 </div>
 
                 <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">What it’s learning right now</div>
-                  <div className="mt-2 text-xs text-white/60">We rank suggestions using your recipe tags + favorites.</div>
+                  <div className="text-sm font-bold text-white/90">
+                    What it’s learning right now
+                  </div>
+                  <div className="mt-2 text-xs text-white/60">
+                    We rank suggestions using your recipe tags + favorites.
+                  </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     {suggested.preferredTags.length === 0 ? (
-                      <span className="text-white/60 text-sm">Add some tags/favorites to improve recommendations.</span>
+                      <span className="text-white/60 text-sm">
+                        Add some tags/favorites to improve recommendations.
+                      </span>
                     ) : (
                       suggested.preferredTags.map((t) => (
-                        <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                        <span
+                          key={t}
+                          className="rounded-full bg-white/10 px-3 py-1 text-sm"
+                        >
                           {t}
                         </span>
                       ))
@@ -682,13 +787,23 @@ export default function RecipesPage() {
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
               {suggested.suggestions.map((s: any) => (
-                <div key={s.id} className="rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
-                  <div className="text-3xl font-extrabold tracking-tight">{s.title}</div>
-                  {s.description ? <div className="mt-2 text-white/70">{s.description}</div> : null}
+                <div
+                  key={s.id}
+                  className="rounded-3xl bg-white/5 p-7 ring-1 ring-white/10"
+                >
+                  <div className="text-3xl font-extrabold tracking-tight">
+                    {s.title}
+                  </div>
+                  {s.description ? (
+                    <div className="mt-2 text-white/70">{s.description}</div>
+                  ) : null}
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {(s.tags || []).slice(0, 4).map((t: string) => (
-                      <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                      <span
+                        key={t}
+                        className="rounded-full bg-white/10 px-3 py-1 text-sm"
+                      >
                         {t}
                       </span>
                     ))}
@@ -696,7 +811,9 @@ export default function RecipesPage() {
 
                   <div className="mt-5 text-white/60 text-sm">
                     Ingredients (keywords):{" "}
-                    <span className="text-white/75">{(s.ingredients || []).slice(0, 6).join(", ")}</span>
+                    <span className="text-white/75">
+                      {(s.ingredients || []).slice(0, 6).join(", ")}
+                    </span>
                   </div>
 
                   <div className="mt-6 flex items-center gap-3">
@@ -722,7 +839,11 @@ export default function RecipesPage() {
                     )}
                   </div>
 
-                  {s.source_name ? <div className="mt-3 text-xs text-white/40">Source: {s.source_name}</div> : null}
+                  {s.source_name ? (
+                    <div className="mt-3 text-xs text-white/40">
+                      Source: {s.source_name}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
