@@ -2,10 +2,10 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import RcPageShell from "@/components/rc/RcPageShell";
+import ReceiptScanTool from "@/components/frostpantry/ReceiptScanTool";
 
 /* =========================
    Types
@@ -26,24 +26,29 @@ type StorageItem = {
   created_at: string;
 };
 
-type FilterTab = "all" | "leftovers" | "soonish" | "expired" | "freezer" | "fridge" | "pantry";
+type FilterTab =
+  | "all"
+  | "leftovers"
+  | "soonish"
+  | "expired"
+  | "freezer"
+  | "fridge"
+  | "pantry";
 
 /* =========================
    Constants
 ========================= */
 
-// Use Soon-ish (Option C locked)
 const SOONISH_LIMIT_MAIN = 3;
 
 const SOONISH_BY_LOCATION: Record<Location, number> = {
-  Pantry: 0, // you wanted essentially “don’t nag pantry”
+  Pantry: 0,
   Fridge: 2,
   Freezer: 5,
 };
 
 const SOONISH_LEFTOVER_DAYS = 3;
 
-// Default use-by windows (locked earlier)
 const DEFAULT_DAYS_BY_LOCATION: Record<Location, number> = {
   Fridge: 30,
   Pantry: 180,
@@ -111,13 +116,17 @@ function isSoonish(item: StorageItem) {
   const d = daysUntil(item.use_by);
   if (d == null) return false;
 
-  // leftovers have their own tighter window
   if (item.is_leftover) return d <= SOONISH_LEFTOVER_DAYS;
 
   return d <= SOONISH_BY_LOCATION[item.location];
 }
 
-function computeDefaultUseBy(location: Location, stored_on: string, currentUseBy: string, useByAuto: boolean) {
+function computeDefaultUseBy(
+  location: Location,
+  stored_on: string,
+  currentUseBy: string,
+  useByAuto: boolean
+) {
   const canAutoSet = currentUseBy.trim() === "" || useByAuto;
   if (!stored_on || !canAutoSet) return { use_by: currentUseBy, useByAuto };
 
@@ -182,13 +191,9 @@ function Chip({
    Page
 ========================= */
 
+type AddPanel = "none" | "type" | "paste" | "upload";
+
 export default function FrostPantryPage() {
-  // 🔥 Helpful while iterating; remove later if you want.
-  // eslint-disable-next-line no-console
-  console.log("🔥 FROSTPANTRY PAGE — LOADED", new Date().toISOString());
-
-  const router = useRouter();
-
   const [items, setItems] = useState<StorageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -200,8 +205,14 @@ export default function FrostPantryPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  // Inline Add panel (you asked: not a new page)
-  const [addOpen, setAddOpen] = useState(false);
+  // Inline panels
+  const [addPanel, setAddPanel] = useState<AddPanel>("none");
+
+  // "Add ▾" opens the 3 option buttons
+  const [addOptionsOpen, setAddOptionsOpen] = useState(false);
+  const addOptionsRef = useRef<HTMLDivElement | null>(null);
+
+  // Type-it state
   const [addName, setAddName] = useState("");
   const [addLocation, setAddLocation] = useState<Location>("Freezer");
   const [addQty, setAddQty] = useState<number>(1);
@@ -211,6 +222,16 @@ export default function FrostPantryPage() {
   const [addUseBy, setAddUseBy] = useState<string>("");
   const [addUseByAuto, setAddUseByAuto] = useState<boolean>(true);
   const [addBusy, setAddBusy] = useState(false);
+
+  useEffect(() => {
+    function onDocDown(e: MouseEvent) {
+      if (!addOptionsRef.current) return;
+      if (addOptionsRef.current.contains(e.target as Node)) return;
+      setAddOptionsOpen(false);
+    }
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, []);
 
   async function loadItems() {
     setLoading(true);
@@ -242,13 +263,13 @@ export default function FrostPantryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  // Keep Add “use by” in sync while still auto
+  // Keep use-by in sync while auto
   useEffect(() => {
-    if (!addOpen) return;
+    if (addPanel !== "type") return;
     const computed = computeDefaultUseBy(addLocation, addStoredOn, addUseBy, addUseByAuto);
     if (computed.use_by !== addUseBy) setAddUseBy(computed.use_by);
     if (computed.useByAuto !== addUseByAuto) setAddUseByAuto(computed.useByAuto);
-  }, [addOpen, addLocation, addStoredOn, addUseBy, addUseByAuto]);
+  }, [addPanel, addLocation, addStoredOn, addUseBy, addUseByAuto]);
 
   /* =========================
      Derived lists
@@ -293,7 +314,9 @@ export default function FrostPantryPage() {
   ========================= */
 
   function toggleSelected(id: string) {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   }
 
   function toggleSelectAllFiltered() {
@@ -323,9 +346,12 @@ export default function FrostPantryPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to update quantity");
+      if (!res.ok || (json && json.ok === false))
+        throw new Error(json?.error || "Failed to update quantity");
 
-      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: nextQty } : i)));
+      setItems((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, quantity: nextQty } : i))
+      );
     } catch (e: any) {
       console.error(e);
       setErrorMsg(e?.message ?? "Failed to update quantity");
@@ -344,7 +370,8 @@ export default function FrostPantryPage() {
     try {
       const res = await fetch(`/api/storage-items/${id}`, { method: "DELETE" });
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to delete item");
+      if (!res.ok || (json && json.ok === false))
+        throw new Error(json?.error || "Failed to delete item");
 
       setItems((prev) => prev.filter((i) => i.id !== id));
       setSelectedIds((prev) => prev.filter((x) => x !== id));
@@ -359,7 +386,9 @@ export default function FrostPantryPage() {
   async function deleteSelected() {
     if (selectionCount === 0) return;
 
-    const ok = confirm(`Delete ${selectionCount} selected item${selectionCount === 1 ? "" : "s"}?`);
+    const ok = confirm(
+      `Delete ${selectionCount} selected item${selectionCount === 1 ? "" : "s"}?`
+    );
     if (!ok) return;
 
     setBulkBusy(true);
@@ -372,7 +401,8 @@ export default function FrostPantryPage() {
         ids.map(async (id) => {
           const res = await fetch(`/api/storage-items/${id}`, { method: "DELETE" });
           const json = await res.json().catch(() => null);
-          if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || `Failed to delete ${id}`);
+          if (!res.ok || (json && json.ok === false))
+            throw new Error(json?.error || `Failed to delete ${id}`);
           return id;
         })
       );
@@ -391,7 +421,11 @@ export default function FrostPantryPage() {
       }
 
       if (failed.length > 0) {
-        setErrorMsg(`Some deletes failed: ${failed.slice(0, 3).join(" • ")}${failed.length > 3 ? " …" : ""}`);
+        setErrorMsg(
+          `Some deletes failed: ${failed.slice(0, 3).join(" • ")}${
+            failed.length > 3 ? " …" : ""
+          }`
+        );
       }
     } catch (e: any) {
       console.error(e);
@@ -424,11 +458,11 @@ export default function FrostPantryPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to add item");
+      if (!res.ok || (json && json.ok === false))
+        throw new Error(json?.error || "Failed to add item");
 
       await loadItems();
 
-      // Reset form to “ready again”
       setAddName("");
       setAddQty(1);
       setAddUnit("bag");
@@ -439,7 +473,8 @@ export default function FrostPantryPage() {
       setAddUseBy(computed.use_by);
       setAddUseByAuto(computed.useByAuto);
 
-      setAddOpen(false);
+      setAddPanel("none");
+      setAddOptionsOpen(false);
     } catch (e: any) {
       console.error(e);
       setErrorMsg(e?.message ?? "Failed to add item");
@@ -448,17 +483,26 @@ export default function FrostPantryPage() {
     }
   }
 
+  function openPanel(next: AddPanel) {
+    setErrorMsg("");
+    setAddPanel((prev) => (prev === next ? "none" : next));
+
+    if (next === "type") {
+      const baseStored = addStoredOn || todayAsDateInput();
+      const computed = computeDefaultUseBy(addLocation, baseStored, addUseBy, addUseByAuto);
+      setAddUseBy(computed.use_by);
+      setAddUseByAuto(computed.useByAuto);
+    }
+  }
+
   /* =========================
      Header
   ========================= */
 
-  const tabPill =
-    "group relative inline-flex items-center gap-3 rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
-  const tabPillActive =
-    "group relative inline-flex items-center gap-3 rounded-full bg-fuchsia-500/80 hover:bg-fuchsia-500 px-5 py-3 text-sm font-extrabold text-white ring-1 ring-white/10 transition";
-
-  const headerBtn =
-    "rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
+  const pill =
+    "rounded-full bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold ring-1 ring-white/10 transition";
+  const pillActive =
+    "rounded-full bg-fuchsia-500/80 hover:bg-fuchsia-500 px-4 py-2.5 text-sm font-extrabold text-white ring-1 ring-white/10 transition";
 
   const header = (
     <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -472,7 +516,10 @@ export default function FrostPantryPage() {
 
         <div className="mt-3 text-white/50 text-sm">
           <span className="text-white/40">Recipes link:</span>{" "}
-          <Link href="/recipes" className="underline underline-offset-4 text-white/70 hover:text-white">
+          <Link
+            href="/recipes"
+            className="underline underline-offset-4 text-white/70 hover:text-white"
+          >
             Recipes
           </Link>
         </div>
@@ -487,30 +534,43 @@ export default function FrostPantryPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
+      {/* Add ▾ -> reveals 3 options */}
+      <div className="flex items-center gap-2 flex-wrap" ref={addOptionsRef}>
         <button
           type="button"
-          onClick={() => {
-            const next = !addOpen;
-            setAddOpen(next);
-
-            // when opening, seed default use_by if empty/auto
-            if (!addOpen && next) {
-              const baseStored = addStoredOn || todayAsDateInput();
-              const computed = computeDefaultUseBy(addLocation, baseStored, addUseBy, addUseByAuto);
-              if (computed.use_by !== addUseBy) setAddUseBy(computed.use_by);
-              if (computed.useByAuto !== addUseByAuto) setAddUseByAuto(computed.useByAuto);
-            }
-          }}
-          className={headerBtn}
-          aria-expanded={addOpen}
+          className={pill}
+          onClick={() => setAddOptionsOpen((v) => !v)}
+          aria-expanded={addOptionsOpen}
         >
-          {addOpen ? "Close" : "Add"}
+          Add ▾
         </button>
 
-        <button type="button" onClick={() => router.push("/frostpantry/receipt")} className={headerBtn}>
-          Scan receipt
-        </button>
+        {addOptionsOpen ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button type="button" className={addPanel === "type" ? pillActive : pill} onClick={() => openPanel("type")}>
+              Type It
+            </button>
+            <button type="button" className={addPanel === "paste" ? pillActive : pill} onClick={() => openPanel("paste")}>
+              Paste It
+            </button>
+            <button type="button" className={addPanel === "upload" ? pillActive : pill} onClick={() => openPanel("upload")}>
+              Upload It
+            </button>
+
+            {addPanel !== "none" ? (
+              <button
+                type="button"
+                className={pill}
+                onClick={() => {
+                  setAddPanel("none");
+                  setAddOptionsOpen(false);
+                }}
+              >
+                Close
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -521,10 +581,17 @@ export default function FrostPantryPage() {
 
   return (
     <RcPageShell header={header}>
-      {/* Inline Add panel */}
-      {addOpen ? (
+      {/* Type It */}
+      {addPanel === "type" ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-          <form onSubmit={handleAdd} className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-2xl font-extrabold tracking-tight">Type It</div>
+              <div className="mt-1 text-sm text-white/60">Quick add an item.</div>
+            </div>
+          </div>
+
+          <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-3">
               <input
                 value={addName}
@@ -579,11 +646,7 @@ export default function FrostPantryPage() {
                   onChange={(e) => {
                     const next = e.target.value;
                     setAddUseBy(next);
-
-                    // If user sets a value -> manual.
-                    // If user clears -> returns to auto behavior.
-                    if (next.trim() === "") setAddUseByAuto(true);
-                    else setAddUseByAuto(false);
+                    setAddUseByAuto(next.trim() === "");
                   }}
                   className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
                 />
@@ -596,7 +659,11 @@ export default function FrostPantryPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => setAddOpen(false)} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setAddPanel("none")}
+                className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+              >
                 Never mind
               </button>
 
@@ -609,16 +676,61 @@ export default function FrostPantryPage() {
               </button>
             </div>
           </form>
-
-          {errorMsg ? (
-            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{errorMsg}</div>
-          ) : null}
         </div>
-      ) : errorMsg ? (
-        <div className="mt-8 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{errorMsg}</div>
       ) : null}
 
-      {/* Use Soon-ish (calm + compact) */}
+      {/* Paste It */}
+      {addPanel === "paste" ? (
+        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+          <div className="text-2xl font-extrabold tracking-tight">Paste It</div>
+          <div className="mt-1 text-sm text-white/60">
+            Paste receipt text. Review first. Add only what you want.
+          </div>
+
+          <div className="mt-5">
+            <ReceiptScanTool
+              forcedMode="paste"
+              embedded
+              onDone={async () => {
+                await loadItems();
+                setAddPanel("none");
+                setAddOptionsOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Upload It */}
+      {addPanel === "upload" ? (
+        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+          <div className="text-2xl font-extrabold tracking-tight">Upload It</div>
+          <div className="mt-1 text-sm text-white/60">
+            Upload a receipt file. Review first. Add only what you want.
+          </div>
+
+          <div className="mt-5">
+            <ReceiptScanTool
+              forcedMode="upload"
+              embedded
+              onDone={async () => {
+                await loadItems();
+                setAddPanel("none");
+                setAddOptionsOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Error */}
+      {addPanel === "none" && errorMsg ? (
+        <div className="mt-8 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
+          {errorMsg}
+        </div>
+      ) : null}
+
+      {/* Use Soon-ish */}
       {soonishMain.length > 0 ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -673,7 +785,9 @@ export default function FrostPantryPage() {
       <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm text-white/60">
-            Showing <span className="text-white/80 font-semibold">{filtered.length}</span> item{filtered.length === 1 ? "" : "s"}.
+            Showing{" "}
+            <span className="text-white/80 font-semibold">{filtered.length}</span>{" "}
+            item{filtered.length === 1 ? "" : "s"}.
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -686,7 +800,11 @@ export default function FrostPantryPage() {
               {selectedAllFiltered ? "Unselect all (view)" : "Select all (view)"}
             </button>
 
-            <button type="button" onClick={loadItems} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3">
+            <button
+              type="button"
+              onClick={loadItems}
+              className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+            >
               Refresh
             </button>
 
@@ -710,7 +828,9 @@ export default function FrostPantryPage() {
       ) : filtered.length === 0 ? (
         <div className="mt-8 text-white/55">
           <div className="font-semibold text-white/70">Nothing here yet.</div>
-          <div className="mt-1 text-sm text-white/50">Add an item when you feel like it. Yes, even the mystery rice from 2014.</div>
+          <div className="mt-1 text-sm text-white/50">
+            Add an item when you feel like it. Yes, even the mystery rice from 2014.
+          </div>
         </div>
       ) : (
         <div className="mt-8 grid gap-6">
@@ -737,7 +857,6 @@ export default function FrostPantryPage() {
 
                         {isOut(item) ? <Chip text="Out" tone="out" /> : null}
                         {!isOut(item) && isLow(item) ? <Chip text="Low" tone="low" /> : null}
-
                         {expired ? <Chip text="Expired" tone="expired" /> : null}
                         {item.is_leftover ? <Chip text="Leftover" /> : null}
 
@@ -745,11 +864,15 @@ export default function FrostPantryPage() {
                       </div>
 
                       <div className="mt-2 text-white/55 text-sm">
-                        {prettyDateShort(item.stored_on) ? `stored ${prettyDateShort(item.stored_on)}` : "—"}
+                        {prettyDateShort(item.stored_on)
+                          ? `stored ${prettyDateShort(item.stored_on)}`
+                          : "—"}
                         {item.use_by ? ` • use by ${prettyDateShort(item.use_by)}` : ""}
                       </div>
 
-                      {item.notes ? <div className="mt-2 text-white/50 text-sm">{item.notes}</div> : null}
+                      {item.notes ? (
+                        <div className="mt-2 text-white/50 text-sm">{item.notes}</div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -778,7 +901,10 @@ export default function FrostPantryPage() {
                       </button>
                     </div>
 
-                    <Link href={`/frostpantry/edit/${item.id}`} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3">
+                    <Link
+                      href={`/frostpantry/edit/${item.id}`}
+                      className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+                    >
                       Edit
                     </Link>
 
@@ -803,7 +929,15 @@ export default function FrostPantryPage() {
 
 /* ========================= */
 
-function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function FilterPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   const base =
     "group relative inline-flex items-center gap-3 rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
   const activeCls =

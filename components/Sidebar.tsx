@@ -1,7 +1,6 @@
 // components/Sidebar.tsx
 import Link from "next/link";
 import type React from "react";
-import Image from "next/image";
 
 type NavItem = {
   href: string;
@@ -17,22 +16,15 @@ const mainItems: NavItem[] = [
 ];
 
 export default function Sidebar() {
-  // When you add a logo file, set this to true and update the src path.
-  const HAS_LOGO = false;
-
   return (
-    <nav className="w-[280px] shrink-0 border-r border-white/10 bg-[#050816] text-white">
+    <nav className="h-screen w-[280px] border-r border-white/10 bg-[#050816] text-white">
       <div className="px-5 py-6">
         {/* Header */}
         <div className="mb-6">
-          {HAS_LOGO ? (
-            <div className="mb-3">
-              <Image src="/brand/logo.png" alt="RecipeChaos" width={220} height={80} priority />
-            </div>
-          ) : (
-            <div className="text-lg font-black tracking-tight">RecipeChaos</div>
-          )}
+          {/* Logo slot (wire this up when you add public assets) */}
+          {/* <img src="/logo.png" alt="RecipeChaos" className="h-10 w-auto" /> */}
 
+          <div className="text-lg font-black tracking-tight">RecipeChaos</div>
           <div className="text-xs text-white/60">Kitchen assistant (personal build)</div>
         </div>
 
@@ -43,7 +35,7 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-semibold text-white/90 ring-1 ring-transparent transition hover:bg-white/8 hover:text-white hover:ring-white/10"
+                className="flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-semibold text-white/90 ring-1 ring-transparent transition hover:bg-white/10 hover:text-white hover:ring-white/10"
               >
                 {item.icon ? <span className="text-base">{item.icon}</span> : null}
                 <span>{item.label}</span>
@@ -51,19 +43,18 @@ export default function Sidebar() {
             ))}
           </div>
 
-          {/* Recipes quick action */}
+          {/* Quick action */}
           <div className="rounded-3xl bg-white/5 p-3 ring-1 ring-white/10">
             <Link
               href="/recipes/add"
-              className="flex items-center justify-center rounded-2xl bg-white/10 px-4 py-2 text-sm font-extrabold text-white ring-1 ring-white/10 transition hover:bg-white/15"
+              className="flex items-center justify-center rounded-2xl bg-[color:var(--primary)] px-4 py-2 text-sm font-extrabold text-white shadow-lg transition hover:bg-[color:var(--primary-hover)]"
             >
               + Add recipe
             </Link>
           </div>
 
-          {/* Subtle footer hint */}
           <div className="text-xs text-white/55">
-            Tip: Use Add recipe to choose manual, URL, or photo — one place, no clutter.
+            Tip: Add recipes via manual, URL, or photo — one place, no clutter.
           </div>
         </div>
       </div>

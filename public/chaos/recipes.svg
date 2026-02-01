@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600">
+  <defs>
+    <radialGradient id="g1" cx="30%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="rgba(217,70,239,0.22)"/>
+      <stop offset="70%" stop-color="rgba(217,70,239,0)"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="80%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="rgba(34,211,238,0.16)"/>
+      <stop offset="70%" stop-color="rgba(34,211,238,0)"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1600" height="600" fill="rgba(0,0,0,0)"/>
+  <rect width="1600" height="600" fill="url(#g1)"/>
+  <rect width="1600" height="600" fill="url(#g2)"/>
+
+  <g opacity="0.15">
+    <circle cx="220" cy="110" r="8" fill="white"/>
+    <circle cx="320" cy="210" r="5" fill="white"/>
+    <circle cx="520" cy="140" r="6" fill="white"/>
+    <circle cx="980" cy="180" r="7" fill="white"/>
+    <circle cx="1280" cy="120" r="5" fill="white"/>
+    <circle cx="1420" cy="240" r="6" fill="white"/>
+  </g>
+</svg>

@@ -1,7 +1,6 @@
 // components/frostpantry/ReceiptScanTool.tsx
 "use client";
 
-import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   buildStorageMatchIndex,
@@ -34,30 +33,27 @@ type ReceiptParseResponse = {
 type ReceiptRow = {
   id: string;
 
-  // user-facing fields
   checked: boolean;
   name: string;
   quantity: number;
   unit: string | null;
   location: Location | null;
-  stored_on: string | null; // YYYY-MM-DD
-  use_by: string | null; // YYYY-MM-DD
+  stored_on: string | null;
+  use_by: string | null;
   notes: string;
 
-  // matching / duplicate signals
   canonLoose: string;
   canonStrict: string;
   dupGroupKey: string | null;
   matchKind: MatchKind | null;
-  matchedStorage: StorageItem[]; // preview matches (0..n)
+  matchedStorage: StorageItem[];
   matchLabel: string | null;
 
-  // "don’t surprise me" latches
   useByTouched: boolean;
 };
 
 /* =========================================================
-   Name normalization (same style as AddFromPurchaseInline)
+   Name normalization
 ========================================================= */
 
 function normalizePurchaseItemName(raw: string) {
@@ -105,7 +101,6 @@ function normalizePurchaseItemName(raw: string) {
   );
   s = trimTail(s);
 
-  // trailing “, 1.5” style fragments
   if (/(,|\s)\d+(\.\d+)?\s*$/.test(s) && /[a-zA-Z]/.test(s)) {
     s = s.replace(/\s*,?\s*\d+(\.\d+)?\s*$/i, "");
     s = trimTail(s);
@@ -166,8 +161,6 @@ function addDaysYMD(ymd: string, days: number) {
 }
 
 function defaultUseByForLocation(storedOn: string, loc: Location | null) {
-  // Calm defaults. User can always override.
-  // (If you already have server-side logic, this just helps the UI feel consistent.)
   const days =
     loc === "Leftovers"
       ? 5
@@ -175,7 +168,7 @@ function defaultUseByForLocation(storedOn: string, loc: Location | null) {
         ? 14
         : loc === "Freezer"
           ? 365
-          : 180; // Pantry/unknown
+          : 180;
   return addDaysYMD(storedOn, days);
 }
 
@@ -196,23 +189,37 @@ function coerceQty(v: unknown, fallback = 1) {
    Component
 ========================================================= */
 
-export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
-  const [mode, setMode] = useState<"paste" | "photos">("paste");
+type Mode = "type" | "paste" | "upload";
 
-  // input state
+export default function ReceiptScanTool({
+  onDone,
+  forcedMode,
+  embedded = false,
+}: {
+  onDone?: () => void;
+  forcedMode?: Mode;
+  embedded?: boolean;
+}) {
+  const [mode, setMode] = useState<Mode>(forcedMode ?? "paste");
+  const activeMode: Mode = forcedMode ?? mode;
+
+  const [typeText, setTypeText] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
-  // data state
   const [loadingStorage, setLoadingStorage] = useState(true);
   const [storageItems, setStorageItems] = useState<StorageItem[]>([]);
   const [rows, setRows] = useState<ReceiptRow[]>([]);
 
-  // ui state
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
 
-  // load storage for match previews
+  useEffect(() => {
+    if (!forcedMode) return;
+    setMode(forcedMode);
+    setError("");
+  }, [forcedMode]);
+
   useEffect(() => {
     let alive = true;
 
@@ -248,7 +255,8 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
     }
   }, [storageItems]);
 
-  // Duplicate summary banner (visibility only; never merges)
+  const checkedCount = rows.filter((r) => r.checked).length;
+
   const duplicateSummary = useMemo(() => {
     const groups = new Map<string, ReceiptRow[]>();
     for (const r of rows) {
@@ -263,12 +271,10 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
     return { groupCount, extraCount };
   }, [rows]);
 
-  const anyRows = rows.length > 0;
-  const checkedCount = rows.filter((r) => r.checked).length;
-
   function clearAll() {
     setError("");
     setRows([]);
+    setTypeText("");
     setPasteText("");
     setFiles([]);
   }
@@ -280,7 +286,6 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
 
         const next: ReceiptRow = { ...r, ...patch };
 
-        // If location or stored_on changes and user hasn't touched use_by, keep it helpful.
         const storedOn = next.stored_on || todayYMD();
         if (
           (patch.location !== undefined || patch.stored_on !== undefined) &&
@@ -296,7 +301,6 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
   }
 
   function recomputeDupKeys(base: ReceiptRow[]) {
-    // Group by a loose canonical key, but only if it’s meaningful
     const map = new Map<string, number>();
     for (const r of base) {
       const k = r.canonLoose || "";
@@ -319,7 +323,6 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
     const canonStrict = canonicalizeStrict(cleaned);
 
     const matched = matchToStorage(matchIndex, cleaned);
-    // matchToStorage can be designed different ways; handle both:
     const list: StorageItem[] = Array.isArray((matched as any)?.items)
       ? ((matched as any).items as StorageItem[])
       : Array.isArray(matched)
@@ -332,33 +335,83 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
     if (list.length > 0) {
       const first = list[0];
       const loc = safeString((first as any)?.location) || "Somewhere";
-      label = `${loc}${typeof (first as any)?.quantity === "number" ? ` • ${(first as any).quantity}` : ""}${
-        safeString((first as any)?.unit) ? ` ${(first as any).unit}` : ""
-      }`;
+      label = `${loc}${
+        typeof (first as any)?.quantity === "number" ? ` • ${(first as any).quantity}` : ""
+      }${safeString((first as any)?.unit) ? ` ${(first as any).unit}` : ""}`;
     }
 
-    // unit compatibility note (light touch)
     if (list.length > 0 && unit) {
       const anyCompatible = list.some((s) => unitsCompatible(unit, safeString((s as any)?.unit)));
-      if (!anyCompatible) {
-        label = label ? `${label} • (unit differs)` : "(unit differs)";
-      }
+      if (!anyCompatible) label = label ? `${label} • (unit differs)` : "(unit differs)";
     }
 
-    return { canonLoose, canonStrict, matchKind: kind, matchedStorage: list.slice(0, 4), matchLabel: label };
+    return {
+      canonLoose,
+      canonStrict,
+      matchKind: kind,
+      matchedStorage: list.slice(0, 4),
+      matchLabel: label,
+    };
   }
 
-  async function parseReceipt() {
+  function buildRowsFromSimpleLines(raw: string) {
+    const storedOn = todayYMD();
+    const lines = raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    const baseRows: ReceiptRow[] = lines
+      .map((line) => {
+        const m = line.match(/^(.*?)(?:\s+x?\s*(\d+))?$/i);
+        const rawName = (m?.[1] ?? line).trim();
+        const qty = m?.[2] ? coerceQty(m[2], 1) : 1;
+
+        const name = normalizePurchaseItemName(rawName);
+        if (!name) return null;
+
+        const match = computeMatchPreview(name, null);
+
+        const row: ReceiptRow = {
+          id: uid("row"),
+          checked: true,
+          name,
+          quantity: qty,
+          unit: null,
+          location: "Pantry",
+          stored_on: storedOn,
+          use_by: defaultUseByForLocation(storedOn, "Pantry"),
+          notes: "",
+
+          canonLoose: match.canonLoose,
+          canonStrict: match.canonStrict,
+          dupGroupKey: null,
+
+          matchKind: match.matchKind,
+          matchedStorage: match.matchedStorage,
+          matchLabel: match.matchLabel,
+
+          useByTouched: false,
+        };
+
+        return row;
+      })
+      .filter(Boolean) as ReceiptRow[];
+
+    setRows(recomputeDupKeys(baseRows));
+  }
+
+  async function runParse() {
     setBusy(true);
     setError("");
 
     try {
       let data: ReceiptParseResponse | null = null;
 
-      if (mode === "paste") {
+      if (activeMode === "paste") {
         const text = pasteText.trim();
         if (!text) {
-          setError("Paste receipt text first.");
+          setError("Paste something first.");
           setBusy(false);
           return;
         }
@@ -370,10 +423,18 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
         });
 
         data = (await res.json().catch(() => null)) as ReceiptParseResponse | null;
-        if (!res.ok) throw new Error(data?.error || "Receipt parse failed");
-      } else {
+
+        if (!res.ok) {
+          const msg =
+            data?.error ||
+            `Receipt parse failed (${res.status} ${res.statusText || "error"})`;
+          throw new Error(msg);
+        }
+      }
+
+      if (activeMode === "upload") {
         if (files.length === 0) {
-          setError("Add one or more images first.");
+          setError("Upload a file first.");
           setBusy(false);
           return;
         }
@@ -381,13 +442,15 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
         const fd = new FormData();
         for (const f of files) fd.append("files", f);
 
-        const res = await fetch("/api/receipt/parse", {
-          method: "POST",
-          body: fd,
-        });
-
+        const res = await fetch("/api/receipt/parse", { method: "POST", body: fd });
         data = (await res.json().catch(() => null)) as ReceiptParseResponse | null;
-        if (!res.ok) throw new Error(data?.error || "Receipt parse failed");
+
+        if (!res.ok) {
+          const msg =
+            data?.error ||
+            `Receipt parse failed (${res.status} ${res.statusText || "error"})`;
+          throw new Error(msg);
+        }
       }
 
       const items = Array.isArray(data?.items) ? (data!.items as ParsedReceiptItem[]) : [];
@@ -434,7 +497,7 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
 
       setRows(recomputeDupKeys(baseRows));
     } catch (e: any) {
-      setError(e?.message || "Parse failed");
+      setError(e?.message || "Receipt parse failed");
     } finally {
       setBusy(false);
     }
@@ -448,7 +511,6 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
     setError("");
 
     try {
-      // optimistic: add one-by-one; keeps it compatible with simple APIs
       const results = await Promise.all(
         selected.map(async (r) => {
           const payload = {
@@ -473,9 +535,8 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
       );
 
       const failures = results.filter((x) => !x.ok);
-      if (failures.length > 0) {
+      if (failures.length > 0)
         throw new Error(failures[0].error || `Failed to add ${failures.length} item(s)`);
-      }
 
       clearAll();
       onDone?.();
@@ -492,13 +553,11 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
 
   function onFilesPicked(list: FileList | null) {
     if (!list) return;
-    const next = Array.from(list);
-    setFiles(next);
+    setFiles(Array.from(list));
   }
 
-  // Recompute match previews if storage changes (quietly)
   useEffect(() => {
-    if (!anyRows) return;
+    if (rows.length === 0) return;
 
     setRows((prev) => {
       const refreshed = prev.map((r) => {
@@ -520,100 +579,124 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
   const btn =
     "rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50";
   const btnPrimary =
-    "rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 px-4 py-2.5 text-sm font-semibold shadow-lg shadow-fuchsia-500/20 transition disabled:opacity-50";
+    "rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 px-4 py-2.5 text-sm font-extrabold text-black shadow-lg shadow-fuchsia-500/20 transition disabled:opacity-50";
+
+  const primaryLabel =
+    activeMode === "type"
+      ? "Conjure items"
+      : activeMode === "paste"
+        ? "Summon the chaos"
+        : "Crack it open";
 
   return (
     <div className="text-white">
-      {/* Mode pills */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          className={btn}
-          onClick={() => setMode("paste")}
-          aria-pressed={mode === "paste"}
-          title="Paste receipt text (fastest, most reliable)"
-        >
-          Paste text
-        </button>
-        <button
-          type="button"
-          className={btn}
-          onClick={() => setMode("photos")}
-          aria-pressed={mode === "photos"}
-          title="Upload one or more receipt images"
-        >
-          Photos
-        </button>
-
-        <div className="text-xs text-white/55 ml-1">
-          Review-first. Nothing is merged or added without a click.
-        </div>
-      </div>
-
-      {/* Input card */}
-      <div className="mt-4 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-        {error ? (
-          <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-100">
-            {error}
-          </div>
-        ) : null}
-
-        {loadingStorage ? (
-          <div className="text-sm text-white/60">Loading storage for match previews…</div>
-        ) : null}
-
-        {mode === "paste" ? (
-          <>
-            <div className="text-sm font-semibold text-white/85">Paste receipt text</div>
-            <textarea
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              placeholder="Paste receipt text here…"
-              className="mt-3 w-full min-h-[160px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-            />
-          </>
-        ) : (
-          <>
-            <div className="text-sm font-semibold text-white/85">Upload receipt photos</div>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => onFilesPicked(e.target.files)}
-              className="mt-3 block w-full text-sm text-white/70 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-white/15"
-            />
-            {files.length > 0 ? (
-              <div className="mt-2 text-xs text-white/55">{files.length} file(s) selected.</div>
+      {!embedded ? (
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="text-3xl font-extrabold tracking-tight">Receipt</div>
+            <div className="mt-2 text-white/70">
+              Type items, paste receipt text, or upload a file. Review first. Add only what you want.
+            </div>
+            {loadingStorage ? (
+              <div className="mt-2 text-xs text-white/50">Loading storage for match previews…</div>
             ) : null}
-          </>
-        )}
-
-        <div className="mt-4 flex items-center gap-2 flex-wrap">
-          <button type="button" className={btnPrimary} onClick={parseReceipt} disabled={busy}>
-            {busy ? "Working…" : "Parse"}
-          </button>
-          <button type="button" className={btn} onClick={clearAll} disabled={busy}>
-            Clear
-          </button>
+          </div>
         </div>
+      ) : null}
+
+      {error ? (
+        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-100">
+          {error}
+        </div>
+      ) : null}
+
+      {activeMode === "type" ? (
+        <>
+          <div className="text-sm font-semibold text-white/85">Type items (one per line)</div>
+          <div className="mt-2 text-xs text-white/55">Tip: you can do “kale 2” or “kale x2”.</div>
+          <textarea
+            value={typeText}
+            onChange={(e) => setTypeText(e.target.value)}
+            placeholder={`milk\nbananas 6\nfrozen pizza x2`}
+            className="mt-3 w-full min-h-[160px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+          />
+        </>
+      ) : activeMode === "paste" ? (
+        <>
+          <div className="text-sm font-semibold text-white/85">Paste receipt text</div>
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            placeholder="Paste receipt text here…"
+            className="mt-3 w-full min-h-[160px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+          />
+        </>
+      ) : (
+        <>
+          <div className="text-sm font-semibold text-white/85">Upload a receipt file</div>
+          <div className="mt-2 text-xs text-white/55">
+            Accepts any file type. (If it’s a scanned PDF/image, you’ll still need OCR for best results.)
+          </div>
+          <input
+            type="file"
+            multiple
+            accept="*/*"
+            onChange={(e) => onFilesPicked(e.target.files)}
+            className="mt-3 block w-full text-sm text-white/70 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-white/15"
+          />
+          {files.length > 0 ? (
+            <div className="mt-2 text-xs text-white/55">
+              {files.length} file(s):{" "}
+              <span className="text-white/75">
+                {files.map((f) => f.name).slice(0, 3).join(", ")}
+                {files.length > 3 ? "…" : ""}
+              </span>
+            </div>
+          ) : null}
+        </>
+      )}
+
+      <div className="mt-4 flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          className={btnPrimary}
+          disabled={busy}
+          onClick={() => {
+            if (activeMode === "type") {
+              if (!typeText.trim()) {
+                setError("Type something first.");
+                return;
+              }
+              setError("");
+              buildRowsFromSimpleLines(typeText);
+              return;
+            }
+            runParse();
+          }}
+        >
+          {busy ? "Working…" : primaryLabel}
+        </button>
+
+        <button type="button" className={btn} onClick={clearAll} disabled={busy}>
+          Wipe it
+        </button>
       </div>
 
-      {/* Results */}
-      {anyRows ? (
+      {rows.length > 0 ? (
         <div className="mt-6">
-          {/* Duplicates banner (visibility only) */}
           {duplicateSummary.groupCount > 0 ? (
             <div className="mb-4 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-              <div className="font-semibold text-white/90">Possible duplicates on this receipt</div>
+              <div className="font-semibold text-white/90">Possible duplicates</div>
               <div className="mt-1 text-sm text-white/60">
                 {duplicateSummary.groupCount} group{duplicateSummary.groupCount === 1 ? "" : "s"} found
-                {duplicateSummary.extraCount > 0 ? ` (${duplicateSummary.extraCount} extra line${duplicateSummary.extraCount === 1 ? "" : "s"})` : ""}.
-                We won’t merge anything automatically.
+                {duplicateSummary.extraCount > 0
+                  ? ` (${duplicateSummary.extraCount} extra line${duplicateSummary.extraCount === 1 ? "" : "s"})`
+                  : ""}
+                . No automatic merging.
               </div>
             </div>
           ) : null}
 
-          {/* Actions */}
           <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="text-sm text-white/70">
               {checkedCount} selected • {rows.length} total
@@ -631,122 +714,13 @@ export default function ReceiptScanTool({ onDone }: { onDone?: () => void }) {
                 className={btnPrimary}
                 onClick={addSelectedToStorage}
                 disabled={busy || checkedCount === 0}
-                title="Adds selected items to Pantry & Freezer"
               >
-                Add selected to the Chaos
+                Add to the Chaos
               </button>
             </div>
           </div>
 
-          {/* Rows */}
-          <div className="grid gap-3">
-            {rows.map((r) => (
-              <div
-                key={r.id}
-                className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-4"
-                style={
-                  r.dupGroupKey
-                    ? {
-                        border: "1px solid rgba(232,121,249,0.25)",
-                        background: "rgba(232,121,249,0.06)",
-                      }
-                    : undefined
-                }
-              >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={r.checked}
-                    onChange={(e) => setRow(r.id, { checked: e.target.checked })}
-                    className="mt-1 h-5 w-5 accent-fuchsia-500"
-                    aria-label={`Select ${r.name}`}
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <input
-                        value={r.name}
-                        onChange={(e) => setRow(r.id, { name: e.target.value })}
-                        className="w-full md:flex-1 rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                        placeholder="Item name"
-                      />
-
-                      <input
-                        value={String(r.quantity)}
-                        onChange={(e) => setRow(r.id, { quantity: coerceQty(e.target.value, 1) })}
-                        className="w-20 rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                        inputMode="numeric"
-                        aria-label="Quantity"
-                        title="Quantity"
-                      />
-
-                      <input
-                        value={r.unit ?? ""}
-                        onChange={(e) => setRow(r.id, { unit: e.target.value.trim() || null })}
-                        className="w-28 rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                        placeholder="unit"
-                        aria-label="Unit"
-                        title="Unit (optional)"
-                      />
-                    </div>
-
-                    <div className="mt-2 grid gap-2 md:grid-cols-4">
-                      <select
-                        value={(r.location ?? "Pantry") as any}
-                        onChange={(e) => setRow(r.id, { location: e.target.value as Location })}
-                        className="rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                        aria-label="Location"
-                        title="Location"
-                      >
-                        <option value="Pantry">Pantry</option>
-                        <option value="Fridge">Fridge</option>
-                        <option value="Freezer">Freezer</option>
-                        <option value="Leftovers">Leftovers</option>
-                      </select>
-
-                      <div className="flex flex-col">
-                        <label className="text-[11px] text-white/45 mb-1">Stored on</label>
-                        <input
-                          type="date"
-                          value={r.stored_on ?? ""}
-                          onChange={(e) => setRow(r.id, { stored_on: e.target.value || null })}
-                          className="rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                        />
-                      </div>
-
-                      <div className="flex flex-col md:col-span-2">
-                        <label className="text-[11px] text-white/45 mb-1">Use by</label>
-                        <input
-                          type="date"
-                          value={r.use_by ?? ""}
-                          onChange={(e) =>
-                            setRow(r.id, { use_by: e.target.value || null, useByTouched: true })
-                          }
-                          className="rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                        />
-                      </div>
-                    </div>
-
-                    {r.matchLabel ? (
-                      <div className="mt-2 text-xs text-white/55">
-                        In storage: <span className="text-white/75 font-semibold">{r.matchLabel}</span>
-                      </div>
-                    ) : null}
-
-                    <textarea
-                      value={r.notes}
-                      onChange={(e) => setRow(r.id, { notes: e.target.value })}
-                      placeholder="Notes (prices / discounts / receipt junk can live here)"
-                      className="mt-3 w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 text-xs text-white/55">
+          <div className="text-xs text-white/55">
             Duplicates are highlighted for visibility only — no automatic merging or quantity changes.
           </div>
         </div>

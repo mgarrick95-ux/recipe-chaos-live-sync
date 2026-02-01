@@ -2,30 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* -------------------------------------------------------
+   RecipeChaos Base Theme (aligned with /recipes motif)
+   ------------------------------------------------------- */
+
 :root {
+  /* Core */
   --bg: #050816;
   --text: rgba(255, 255, 255, 0.92);
-  --muted: rgba(255, 255, 255, 0.72);
-  --muted-2: rgba(255, 255, 255, 0.52);
+  --muted: rgba(255, 255, 255, 0.7);
+  --muted-2: rgba(255, 255, 255, 0.5);
 
-  --panel: rgba(255, 255, 255, 0.06);
-  --card: rgba(255, 255, 255, 0.07);
+  /* Surfaces */
+  --panel: rgba(255, 255, 255, 0.05);
+  --card: rgba(255, 255, 255, 0.05);
+  --card-2: rgba(255, 255, 255, 0.07);
 
+  /* Lines / rings */
   --border: rgba(255, 255, 255, 0.10);
   --border-2: rgba(255, 255, 255, 0.14);
 
-  /* Keep fuchsia as a brand hint, but calm it down */
-  --primary: rgba(217, 70, 239, 0.85);
-  --primary-hover: rgba(232, 121, 249, 0.9);
+  /* Accents */
+  --primary: #d946ef; /* fuchsia-500 */
+  --primary-hover: #e879f9; /* fuchsia-400 */
+  --danger: #dc2626; /* red-600 */
+  --danger-hover: #ef4444; /* red-500 */
 
-  --danger: #dc2626;
-  --danger-hover: #ef4444;
-
+  /* Radius */
   --r-lg: 16px;
   --r-xl: 24px;
   --r-pill: 9999px;
 
-  --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.45);
+  /* Shadows */
+  --shadow-soft: 0 12px 30px rgba(217, 70, 239, 0.18);
+
+  /* Fonts */
+  --font-chaos: var(--font-amatic); /* ✅ Amatic SC Bold for hero titles only */
 }
 
 html,
@@ -37,20 +49,52 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+
+  /* ✅ Inter is now global body/UI font */
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Links */
+/* Make default links not look like 1998, even if a page forgets classes */
 a {
   color: inherit;
   text-decoration: none;
 }
+
 a:hover {
   text-decoration: underline;
 }
 
-/* -----------------------------
-   Reusable “RecipeChaos shell”
-   ----------------------------- */
+/* Better “app” feel on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* -------------------------------------------------------
+   RecipeChaos utility classes (for non-tailwind pages)
+   These are designed to match the /recipes look.
+   ------------------------------------------------------- */
+
+.rc-hero__chaos {
+  position: absolute;
+  inset: -30%;
+  background:
+    /* deep space base */
+    radial-gradient(circle at 35% 25%, rgba(120, 80, 220, 0.20), transparent 55%),
+    radial-gradient(circle at 75% 30%, rgba(0, 240, 192, 0.12), transparent 55%),
+    radial-gradient(circle at 45% 85%, rgba(255, 176, 0, 0.10), transparent 60%),
+
+    /* faint "nebula" shading */
+    radial-gradient(circle at 15% 70%, rgba(255, 94, 87, 0.08), transparent 60%),
+    radial-gradient(circle at 90% 75%, rgba(80, 140, 255, 0.08), transparent 65%);
+
+  filter: blur(64px);
+  opacity: 0.65;
+  transform: rotate(-6deg);
+}
 
 .rc-page {
   min-height: 100vh;
@@ -58,30 +102,68 @@ a:hover {
   color: var(--text);
 }
 
-/* More “mock-like” background: lively but not loud */
-.rc-hero {
-  background:
-    radial-gradient(1200px 700px at 10% 20%, rgba(255,255,255,0.10), transparent 55%),
-    radial-gradient(900px 600px at 85% 30%, rgba(255,255,255,0.06), transparent 55%),
-    radial-gradient(700px 520px at 60% 92%, rgba(255,255,255,0.05), transparent 60%),
-    linear-gradient(180deg, #050816 0%, #060a1b 45%, #050816 100%);
+.rc-container {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2.5rem 1rem;
 }
 
-.rc-card {
-  border-radius: var(--r-xl);
-  background: rgba(255,255,255,0.07);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+.rc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rc-subtle {
+  color: var(--muted);
+}
+
+.rc-tiny {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
 }
 
 .rc-panel {
   border-radius: var(--r-xl);
-  background: rgba(255,255,255,0.06);
+  background: var(--panel);
   border: 1px solid var(--border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 18px;
+}
+
+.rc-card {
+  border-radius: var(--r-xl);
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 18px;
+}
+
+.rc-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rc-input,
+.rc-select {
+  width: 100%;
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  color: var(--text);
+  outline: none;
+}
+
+.rc-input:focus,
+.rc-select:focus {
+  border-color: rgba(217, 70, 239, 0.35);
+  box-shadow: 0 0 0 3px rgba(217, 70, 239, 0.18);
 }
 
 .rc-btn {
@@ -93,35 +175,61 @@ a:hover {
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
+
 .rc-btn:hover {
   background: rgba(255, 255, 255, 0.14);
   border-color: var(--border-2);
 }
+
 .rc-btn:active {
   transform: translateY(1px);
+}
+
+.rc-btn-dark {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .rc-btn-primary {
   border-radius: var(--r-pill);
   background: var(--primary);
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(217, 70, 239, 0.45);
   padding: 12px 18px;
   font-weight: 800;
-  box-shadow: 0 12px 30px rgba(217,70,239,0.18);
+  box-shadow: var(--shadow-soft);
 }
+
 .rc-btn-primary:hover {
   background: var(--primary-hover);
 }
 
-.rc-bottomnav {
-  background: rgba(5, 8, 22, 0.78);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(255,255,255,0.10);
+.rc-btn-danger {
+  background: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.5);
 }
 
-/* Typography helpers */
-.rc-title {
-  font-family: var(--font-display);
-  letter-spacing: -0.02em;
+.rc-btn-danger:hover {
+  background: var(--danger-hover);
+}
+
+/* -------------------------------------------------------
+   New: “calm chaos” vignette helper
+   Use on page top cards to get mock-style depth.
+   ------------------------------------------------------- */
+
+.rc-vignette {
+  position: relative;
+  overflow: hidden;
+}
+
+.rc-vignette::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  background:
+    radial-gradient(800px 500px at 20% 15%, rgba(217,70,239,0.18), transparent 60%),
+    radial-gradient(700px 500px at 80% 20%, rgba(56,189,248,0.14), transparent 60%),
+    radial-gradient(900px 700px at 50% 110%, rgba(255,255,255,0.06), transparent 60%);
+  filter: blur(12px);
+  opacity: 0.95;
+  pointer-events: none;
 }
