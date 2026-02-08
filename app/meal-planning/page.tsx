@@ -1,3 +1,4 @@
+// app/meal-planning/page.tsx
 import { Suspense } from "react";
 import MealPlanningClient from "./MealPlanningClient";
 

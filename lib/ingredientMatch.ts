@@ -1,4 +1,5 @@
 // lib/ingredientMatch.ts
+import { looksLikeCandyEggs, normalizeForMatch } from "@/lib/rc/food_disambiguation";
 
 export type StorageItem = {
   id: string;
@@ -19,15 +20,7 @@ function toPrettyString(v: any): string {
   if (typeof v === "number" || typeof v === "boolean") return String(v);
 
   if (typeof v === "object") {
-    const picked =
-      v.name ??
-      v.ingredient ??
-      v.text ??
-      v.value ??
-      v.label ??
-      v.title ??
-      null;
-
+    const picked = v.name ?? v.ingredient ?? v.text ?? v.value ?? v.label ?? v.title ?? null;
     if (typeof picked === "string" && picked.trim()) return picked.trim();
 
     // IMPORTANT:
@@ -107,8 +100,35 @@ export function pickStorageLocation(it: StorageItem): string | undefined {
   return l ? l : undefined;
 }
 
+export type MatchKind = "exact" | "containment" | "token";
+
+type StorageIndexRow = {
+  qty: number;
+  unit?: string;
+  location?: string;
+  rawName: string;
+
+  // Matching metadata
+  isCandyEggs: boolean;
+  tokens: string[];
+  normalizedForMatch: string;
+};
+
+export type IngredientMatchDetail = {
+  ingredient: string;
+
+  matched: boolean;
+  matchKind: MatchKind | null;
+
+  // what pantry thing we matched against (for UI marker copy)
+  matchedStorageRawName: string | null;
+
+  // convenience flags for UI
+  isSoftMatch: boolean; // containment/token
+};
+
 export function buildStorageIndex(items: StorageItem[]) {
-  const map = new Map<string, { qty: number; unit?: string; location?: string; rawName: string }>();
+  const map = new Map<string, StorageIndexRow>();
 
   for (const it of items) {
     const rawName = pickStorageName(it);
@@ -121,9 +141,20 @@ export function buildStorageIndex(items: StorageItem[]) {
     const unit = pickStorageUnit(it);
     const location = pickStorageLocation(it);
 
+    const isCandyEggs = looksLikeCandyEggs(rawName);
+    const match = normalizeForMatch(rawName);
+
     const prev = map.get(key);
     if (!prev) {
-      map.set(key, { qty, unit, location, rawName });
+      map.set(key, {
+        qty,
+        unit,
+        location,
+        rawName,
+        isCandyEggs,
+        tokens: match.tokens,
+        normalizedForMatch: match.normalized,
+      });
     } else {
       map.set(key, { ...prev, qty: (prev.qty || 0) + (qty || 0) });
     }
@@ -132,36 +163,144 @@ export function buildStorageIndex(items: StorageItem[]) {
   return map;
 }
 
+/* =========================================================
+   Token overlap fallback (deterministic, guarded)
+========================================================= */
+
+const GENERIC_TOKENS = new Set([
+  "egg",
+  "eggs",
+  "salt",
+  "pepper",
+  "water",
+  "oil",
+  "sugar",
+  "flour",
+  "butter",
+  "milk",
+  "cheese",
+  "garlic",
+  "onion",
+  "vanilla",
+  "spice",
+  "seasoning",
+  "sauce",
+  "mix",
+  "powder",
+]);
+
+function ingredientWantsEggs(ingredient: string) {
+  const t = normalizeForMatch(ingredient).tokens;
+  return t.includes("egg") || t.includes("eggs");
+}
+
+function meaningfulTokens(tokens: string[]) {
+  return tokens.filter((t) => t.length >= 3 && !GENERIC_TOKENS.has(t));
+}
+
+function tokenOverlapScore(a: string[], b: string[]) {
+  const aSet = new Set(a);
+  let overlap = 0;
+  for (const t of b) if (aSet.has(t)) overlap++;
+  return overlap;
+}
+
+function tokensMatchEnough(ingTokens: string[], storageTokens: string[]) {
+  const a = meaningfulTokens(ingTokens);
+  const b = meaningfulTokens(storageTokens);
+  if (a.length === 0 || b.length === 0) return false;
+
+  const overlap = tokenOverlapScore(a, b);
+  if (a.length <= 2) return overlap >= 1;
+  return overlap >= 2;
+}
+
+/* =========================================================
+   Matching core (returns match kind + storage name)
+========================================================= */
+
+function matchIngredient(
+  ingredient: string,
+  storageIndex: Map<string, StorageIndexRow>
+): { matched: boolean; matchKind: MatchKind | null; matchedStorageRawName: string | null } {
+  const k = norm(ingredient);
+  if (!k) return { matched: false, matchKind: null, matchedStorageRawName: null };
+
+  const wantsEggs = ingredientWantsEggs(ingredient);
+  const ingTokens = normalizeForMatch(ingredient).tokens;
+
+  // 1) Exact
+  const exact = storageIndex.get(k);
+  if (exact && !(wantsEggs && exact.isCandyEggs)) {
+    return { matched: true, matchKind: "exact", matchedStorageRawName: exact.rawName };
+  }
+
+  const entries = Array.from(storageIndex.entries());
+
+  // 2) Containment
+  const foundContainment = entries.find(([sk, row]) => {
+    if (wantsEggs && row.isCandyEggs) return false;
+    return sk === k || sk.includes(k) || k.includes(sk);
+  });
+  if (foundContainment) {
+    return {
+      matched: true,
+      matchKind: "containment",
+      matchedStorageRawName: foundContainment[1].rawName,
+    };
+  }
+
+  // 3) Token overlap
+  const foundToken = entries.find(([, row]) => {
+    if (wantsEggs && row.isCandyEggs) return false;
+    return tokensMatchEnough(ingTokens, row.tokens);
+  });
+  if (foundToken) {
+    return {
+      matched: true,
+      matchKind: "token",
+      matchedStorageRawName: foundToken[1].rawName,
+    };
+  }
+
+  return { matched: false, matchKind: null, matchedStorageRawName: null };
+}
+
 /**
- * Simple + stable:
- * - exact normalized match
- * - containment match as fallback
+ * Summary result (backward compatible)
  */
-export function summarizeIngredients(
-  ingredients: string[],
-  storageIndex: Map<string, { qty: number; unit?: string; location?: string; rawName: string }>
-) {
+export function summarizeIngredients(ingredients: string[], storageIndex: Map<string, StorageIndexRow>) {
   const cleaned = ingredients.map((s) => s.trim()).filter(Boolean);
-  const storageKeys = Array.from(storageIndex.keys());
 
   let haveCount = 0;
+  let softHaveCount = 0;
   const missing: string[] = [];
+  const details: IngredientMatchDetail[] = [];
 
   for (const ing of cleaned) {
-    const k = norm(ing);
-    if (!k) continue;
+    const res = matchIngredient(ing, storageIndex);
 
-    const exact = storageIndex.get(k);
-    if (exact) {
+    if (res.matched) {
       haveCount++;
-      continue;
-    }
+      const isSoft = res.matchKind === "containment" || res.matchKind === "token";
+      if (isSoft) softHaveCount++;
 
-    const foundKey = storageKeys.find((sk) => sk === k || sk.includes(k) || k.includes(sk));
-    if (foundKey) {
-      haveCount++;
+      details.push({
+        ingredient: ing,
+        matched: true,
+        matchKind: res.matchKind,
+        matchedStorageRawName: res.matchedStorageRawName,
+        isSoftMatch: isSoft,
+      });
     } else {
       missing.push(ing);
+      details.push({
+        ingredient: ing,
+        matched: false,
+        matchKind: null,
+        matchedStorageRawName: null,
+        isSoftMatch: false,
+      });
     }
   }
 
@@ -171,6 +310,10 @@ export function summarizeIngredients(
     haveCount,
     missing,
     allInStock: total > 0 && haveCount === total,
+
+    // NEW: for UI marker
+    softHaveCount,
+    details,
   };
 }
 

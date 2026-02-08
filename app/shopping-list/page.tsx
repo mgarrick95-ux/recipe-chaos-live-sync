@@ -281,7 +281,7 @@ function cleanParentheticals(s: string): string {
       const normalized = inside
         .replace(/\s+/g, " ")
         .trim()
-        .replace(/^[-ΓÇôΓÇö]\s*/, "");
+        .replace(/^-\s*/, "");
       return ` (${normalized})`;
     }
     return "";
@@ -358,7 +358,7 @@ const CONTAINER_WORDS = new Set([
   "bunches",
 ]);
 
-// Words that indicate a fundamentally different product (donΓÇÖt match)
+// Words that indicate a fundamentally different product (don't match)
 const DIFFERENT_PRODUCT_MARKERS = new Set([
   "powder",
   "powdered",
@@ -408,7 +408,7 @@ function normalizeName(input: string) {
   return (input || "")
     .toLowerCase()
     .trim()
-    .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "")
+    .replace(/[.,/#!$%^&*;:{}=\-_~()]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -477,7 +477,6 @@ function detectMilkKind(rawName: string): MilkKind {
       return t;
     });
 
-  // normalize numeric-only "1" / "2" only when '%' absent is noisy; keep if it was actually in tokens
   const uniq = Array.from(new Set(variants));
   uniq.sort();
   return { kind: "dairy", variants: uniq };
@@ -487,14 +486,13 @@ function isDifferentProductByMarkers(aRaw: string, bRaw: string): boolean {
   const a = new Set(tokensAll(displayBaseName(aRaw)));
   const b = new Set(tokensAll(displayBaseName(bRaw)));
 
-  // If one has a different-product marker and the other does not, treat as different.
   for (const m of DIFFERENT_PRODUCT_MARKERS) {
     const aHas = a.has(m);
     const bHas = b.has(m);
     if (aHas !== bHas) return true;
   }
 
-  // Special case explicitly requested: garlic vs garlic powder
+  // Special case: garlic vs garlic powder
   const aGarlic = a.has("garlic");
   const bGarlic = b.has("garlic");
   if (aGarlic && bGarlic) {
@@ -543,7 +541,7 @@ function parseDisplayParts(raw: string): { name: string; meta: string } {
   if (!s) return { name: "", meta: "" };
 
   s = s.replace(/\s+/g, " ").trim();
-  s = s.replace(/^[-ΓÇó*]+\s*/, "").trim();
+  s = s.replace(/^[-*]+\s*/, "").trim();
 
   const metaParts: string[] = [];
 
@@ -605,7 +603,7 @@ function parseDisplayParts(raw: string): { name: string; meta: string } {
   const meta = metaParts
     .map((m) => m.trim())
     .filter(Boolean)
-    .join(" ΓÇó ");
+    .join(" - ");
 
   return { name: s.trim(), meta };
 }
@@ -755,6 +753,12 @@ type AddDuplicatePrompt = {
   actionIfYes: AddDupAction;
 };
 
+type RenamePrompt = {
+  open: boolean;
+  groupKey: string;
+  initial: string;
+};
+
 export default function ShoppingListPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [storageItems, setStorageItems] = useState<StorageItem[]>([]);
@@ -781,7 +785,7 @@ export default function ShoppingListPage() {
   const [burnSkipConfirm, setBurnSkipConfirm] = useState(false);
   const [burnDontAskAgainChecked, setBurnDontAskAgainChecked] = useState(false);
 
-  // Γ£à Simple Yes/No duplicate prompt for manual add
+  // Simple Yes/No duplicate prompt for manual add
   const [addDupPrompt, setAddDupPrompt] = useState<AddDuplicatePrompt | null>(
     null
   );
@@ -798,9 +802,17 @@ export default function ShoppingListPage() {
   const [groupQtyOpenKey, setGroupQtyOpenKey] = useState<string | null>(null);
   const [groupQtyAnchor, setGroupQtyAnchor] = useState<AnchorRect | null>(null);
 
-  // Action menu popover (ΓÇª)
+  // Action menu popover ("...")
   const [menuOpenKey, setMenuOpenKey] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<AnchorRect | null>(null);
+
+  // Rename popover
+  const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
+  const [renameAnchor, setRenameAnchor] = useState<AnchorRect | null>(null);
+  const [renameValue, setRenameValue] = useState<string>("");
+
+  // “From recipe” inline reveal (per group)
+  const [fromOpenKeys, setFromOpenKeys] = useState<Record<string, boolean>>({});
 
   const pageRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -818,6 +830,8 @@ export default function ShoppingListPage() {
     setGroupQtyAnchor(null);
     setMenuOpenKey(null);
     setMenuAnchor(null);
+    setRenamePrompt(null);
+    setRenameAnchor(null);
   }
 
   useEffect(() => {
@@ -888,10 +902,7 @@ export default function ShoppingListPage() {
   async function load() {
     setLoading(true);
     try {
-      const [shopping, storage] = await Promise.all([
-        loadShopping(),
-        loadStorage(),
-      ]);
+      const [shopping, storage] = await Promise.all([loadShopping(), loadStorage()]);
       setItems(shopping);
       setStorageItems(storage);
     } catch (e: any) {
@@ -922,7 +933,7 @@ export default function ShoppingListPage() {
     }
   }, []);
 
-  // Γ£à Canonical group key: fixes ΓÇ£milk cartonΓÇ¥ vs ΓÇ£milkΓÇ¥ everywhere.
+  // Canonical group key: fixes "milk carton" vs "milk" everywhere.
   function groupKeyForDisplayName(rawName: string): string {
     const base = displayBaseName(rawName || "");
     const toks = tokensForName(base);
@@ -985,7 +996,7 @@ export default function ShoppingListPage() {
 
   async function patchItem(
     id: string,
-    patch: Partial<Pick<Item, "checked" | "dismissed" | "quantity">>
+    patch: Partial<Pick<Item, "checked" | "dismissed" | "quantity" | "name">>
   ) {
     setItems((prev) =>
       prev.map((it) => (it.id === id ? ({ ...it, ...patch } as Item) : it))
@@ -1006,23 +1017,19 @@ export default function ShoppingListPage() {
 
     if (json?.item) {
       setItems((prev) =>
-        prev.map((it) =>
-          it.id === id ? normalizeIncomingItem(json.item) : it
-        )
+        prev.map((it) => (it.id === id ? normalizeIncomingItem(json.item) : it))
       );
     }
   }
 
   async function patchMany(
     ids: string[],
-    patch: Partial<Pick<Item, "checked" | "dismissed" | "quantity">>
+    patch: Partial<Pick<Item, "checked" | "dismissed" | "quantity" | "name">>
   ) {
     if (ids.length === 0) return;
 
     setItems((prev) =>
-      prev.map((it) =>
-        ids.includes(it.id) ? ({ ...it, ...patch } as Item) : it
-      )
+      prev.map((it) => (ids.includes(it.id) ? ({ ...it, ...patch } as Item) : it))
     );
 
     const results = await Promise.all(
@@ -1041,8 +1048,9 @@ export default function ShoppingListPage() {
     if (failures.length > 0) {
       await load();
       alert(
-        `Some items failed to update (${failures.length}).\n` +
-          (failures[0].error || "Unknown error")
+        `Some items failed to update (${failures.length}).\n${
+          failures[0].error || "Unknown error"
+        }`
       );
       return;
     }
@@ -1075,8 +1083,9 @@ export default function ShoppingListPage() {
     if (failures.length > 0) {
       await load();
       alert(
-        `Some items failed to delete (${failures.length}).\n` +
-          (failures[0].error || "Unknown error")
+        `Some items failed to delete (${failures.length}).\n${
+          failures[0].error || "Unknown error"
+        }`
       );
     }
   }
@@ -1090,7 +1099,7 @@ export default function ShoppingListPage() {
     if (ids.length === 0) return;
 
     closeAllPopovers();
-    setStatus("BurningΓÇª");
+    setStatus("Burning...");
     await deleteMany(ids);
     setStatus("");
     setBurnPromptOpen(false);
@@ -1109,7 +1118,7 @@ export default function ShoppingListPage() {
     const allCrossed = activeItems.every((i) => i.checked);
     const next = !allCrossed;
 
-    setStatus(next ? "Crossing offΓÇª" : "UndoingΓÇª");
+    setStatus(next ? "Crossing off..." : "Undoing...");
     await patchMany(
       activeItems.map((i) => i.id),
       { checked: next }
@@ -1122,7 +1131,7 @@ export default function ShoppingListPage() {
 
   const visibleItems = useMemo(() => items, [items]);
 
-  // Γ£à KEY FIX: group by canonical key (milk + milk carton collapse to one row)
+  // KEY FIX: group by canonical key (milk + milk carton collapse to one row)
   const groupedByCategory = useMemo(() => {
     const groupMap = new Map<string, Item[]>();
 
@@ -1205,7 +1214,7 @@ export default function ShoppingListPage() {
     const ids = info?.ids || [];
     if (ids.length === 0) return;
 
-    setStatus("UpdatingΓÇª");
+    setStatus("Updating...");
     await patchMany(ids, { checked: next });
     setStatus("");
 
@@ -1215,7 +1224,7 @@ export default function ShoppingListPage() {
     maybePromptBurnIfAllCrossed(nextActive);
   }
 
-  // Storage signatures for ΓÇ£already have itΓÇ¥
+  // Storage signatures for "already have it"
   const storageSignatures = useMemo(() => {
     const sigs: {
       canonical: string;
@@ -1281,9 +1290,7 @@ export default function ShoppingListPage() {
       const exact = storageSignatures.find((s) => s.canonical === canon);
       if (exact) matches = exact.items;
       else {
-        const found = storageSignatures.find((s) =>
-          tokenSubsetMatch(toks, s.tokens)
-        );
+        const found = storageSignatures.find((s) => tokenSubsetMatch(toks, s.tokens));
         if (found) matches = found.items;
       }
 
@@ -1372,7 +1379,7 @@ export default function ShoppingListPage() {
       return next;
     });
 
-    setStatus("RemovingΓÇª");
+    setStatus("Removing...");
     await deleteMany(listItems.map((i) => i.id));
     setStatus("");
   }
@@ -1507,12 +1514,29 @@ export default function ShoppingListPage() {
     setMenuAnchor(getAnchorRectFromEl(ev.currentTarget));
   }
 
+  function openRenamePopover(groupKey: string, initial: string, ev: React.MouseEvent<HTMLButtonElement>) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setDetailsOpenKey(null);
+    setDetailsAnchor(null);
+    setQtyOpenId(null);
+    setQtyAnchor(null);
+    setGroupQtyOpenKey(null);
+    setGroupQtyAnchor(null);
+    setMenuOpenKey(null);
+    setMenuAnchor(null);
+
+    setRenamePrompt({ open: true, groupKey, initial });
+    setRenameValue(initial || "");
+    setRenameAnchor(getAnchorRectFromEl(ev.currentTarget));
+  }
+
   async function adjustQty(item: Item, delta: number) {
     const current = itemQty(item);
     const next = Math.max(1, current + delta);
     if (next === current) return;
 
-    setStatus("UpdatingΓÇª");
+    setStatus("Updating...");
     await patchItem(item.id, { quantity: next });
     setStatus("");
   }
@@ -1539,14 +1563,14 @@ export default function ShoppingListPage() {
 
     if (
       !confirm(
-        `Merge ${g.items.length} entries into one quantity (├ù${total})?\n\nThis will delete the extra entries.`
+        `Merge ${g.items.length} entries into one quantity (${total})?\n\nThis will delete the extra entries.`
       )
     ) {
       return;
     }
 
     closeAllPopovers();
-    setStatus("MergingΓÇª");
+    setStatus("Merging...");
     await patchItem(keeper.id, { quantity: total });
     await deleteMany(extras.map((x) => x.id));
     setStatus("");
@@ -1556,7 +1580,7 @@ export default function ShoppingListPage() {
     const ids = g.items.map((i) => i.id);
     if (ids.length === 0) return;
 
-    setStatus("UpdatingΓÇª");
+    setStatus("Updating...");
     await patchMany(ids, { checked: next });
     setStatus("");
 
@@ -1571,18 +1595,12 @@ export default function ShoppingListPage() {
     | { kind: "same"; existing: Item }
     | { kind: "variant"; existing: Item };
 
-  // Γ£à Match rules:
-  // - "same": exact canonical or safe subset (e.g., "milk" vs "milk carton") AND not a different-product case
-  // - "variant": same base family but should be its own row if user says Yes (e.g., "milk" vs "whole milk")
-  // - "none": no prompt
   function findExistingMatchForManualAdd(name: string): ManualMatch {
     const inputBase = displayBaseName(name);
     const inputCanon = canonicalKey(inputBase);
     const inputToks = tokensForName(inputBase);
     if (!inputCanon || !isMeaningfulTokenSet(inputToks)) return { kind: "none" };
 
-    // Different-product markers (garlic vs garlic powder, etc.)
-    // We check per-candidate below; keeping this quick exit only if input itself is weird
     const inputMilk = detectMilkKind(inputBase);
 
     // 1) Try exact canonical match first (safe merge/increment)
@@ -1591,15 +1609,13 @@ export default function ShoppingListPage() {
       if (isDifferentProductByMarkers(inputBase, b)) continue;
 
       const milkB = detectMilkKind(b);
-      // Milk family rules:
       if (inputMilk.kind !== "none" || milkB.kind !== "none") {
         if (inputMilk.kind === "none" || milkB.kind === "none") {
-          // one is milk, the other isn't
-          // allow matching by canonical only; otherwise no
+          // one is milk, the other isn't: allow only exact canonical (handled below)
         } else if (inputMilk.kind === "plant" && milkB.kind === "plant") {
-          if (inputMilk.plantType !== milkB.plantType) continue; // almond vs oat: no
+          if (inputMilk.plantType !== milkB.plantType) continue;
         } else if (inputMilk.kind === "plant" || milkB.kind === "plant") {
-          continue; // plant vs dairy: no
+          continue;
         }
       }
 
@@ -1609,10 +1625,7 @@ export default function ShoppingListPage() {
       if (c === inputCanon) return { kind: "same", existing: it };
     }
 
-    // 2) Fuzzy/subset match (container words etc.), BUT:
-    // - never match across plant/dairy milk
-    // - never match garlic vs garlic powder
-    // - if dairy milk variants differ (whole/2%/skim), treat as "variant" (add new row on Yes)
+    // 2) Fuzzy/subset match
     for (const it of items) {
       const b = displayBaseName(it.name);
       if (isDifferentProductByMarkers(inputBase, b)) continue;
@@ -1620,32 +1633,27 @@ export default function ShoppingListPage() {
       const t = tokensForName(b);
       if (!isMeaningfulTokenSet(t)) continue;
 
-      const inputMilk2 = inputMilk;
       const milkB = detectMilkKind(b);
 
-      // Milk gating:
-      if (inputMilk2.kind !== "none" || milkB.kind !== "none") {
-        // If one is milk and the other isn't, only allow if subset match is strong AND the other contains milk too
-        if (inputMilk2.kind === "none" || milkB.kind === "none") {
+      // Milk gating
+      if (inputMilk.kind !== "none" || milkB.kind !== "none") {
+        if (inputMilk.kind === "none" || milkB.kind === "none") {
           continue; // don't match milk to non-milk
         }
 
-        // plant vs dairy
-        if (inputMilk2.kind === "plant" && milkB.kind === "plant") {
-          if (inputMilk2.plantType !== milkB.plantType) continue;
-        } else if (inputMilk2.kind === "plant" || milkB.kind === "plant") {
+        if (inputMilk.kind === "plant" && milkB.kind === "plant") {
+          if (inputMilk.plantType !== milkB.plantType) continue;
+        } else if (inputMilk.kind === "plant" || milkB.kind === "plant") {
           continue;
         }
 
-        // dairy vs dairy: if fat variants differ => prompt but "Yes" should add as new row
-        if (inputMilk2.kind === "dairy" && milkB.kind === "dairy") {
-          const aV = inputMilk2.variants.join("|");
+        if (inputMilk.kind === "dairy" && milkB.kind === "dairy") {
+          const aV = inputMilk.variants.join("|");
           const bV = milkB.variants.join("|");
-          // If either has a variant marker and they differ, treat as variant
-          const hasAnyVariant = inputMilk2.variants.length > 0 || milkB.variants.length > 0;
+          const hasAnyVariant =
+            inputMilk.variants.length > 0 || milkB.variants.length > 0;
           const differ = aV !== bV;
           if (hasAnyVariant && differ) {
-            // only treat as variant if base is still the same family (subset match on tokens)
             const ok = tokenSubsetMatch(inputToks, t) || tokenSubsetMatch(t, inputToks);
             if (ok) return { kind: "variant", existing: it };
             continue;
@@ -1653,7 +1661,6 @@ export default function ShoppingListPage() {
         }
       }
 
-      // General subset match (milk carton vs milk, minced garlic vs garlic, etc.)
       const ok = tokenSubsetMatch(inputToks, t) || tokenSubsetMatch(t, inputToks);
       if (ok) return { kind: "same", existing: it };
     }
@@ -1663,7 +1670,7 @@ export default function ShoppingListPage() {
 
   async function addManualProceed(name: string) {
     closeAllPopovers();
-    setStatus("AddingΓÇª");
+    setStatus("Adding...");
 
     try {
       const res = await fetch("/api/shopping-list/items", {
@@ -1684,11 +1691,8 @@ export default function ShoppingListPage() {
         return;
       }
 
-      if (json?.note) {
-        setStatus(String(json.note));
-      } else {
-        setStatus("Done");
-      }
+      if (json?.note) setStatus(String(json.note));
+      else setStatus("Done");
 
       setNewItemName("");
       window.setTimeout(() => setStatus(""), 1200);
@@ -1702,7 +1706,6 @@ export default function ShoppingListPage() {
     const name = newItemName.trim();
     if (!name) return;
 
-    // Γ£à client-side match first
     const match = findExistingMatchForManualAdd(name);
     if (match.kind === "same") {
       setAddDupPrompt({
@@ -1717,7 +1720,6 @@ export default function ShoppingListPage() {
     }
 
     if (match.kind === "variant") {
-      // Prompt, but YES = add new row (keep separate), NO = do nothing
       setAddDupPrompt({
         open: true,
         existingId: match.existing.id,
@@ -1747,13 +1749,13 @@ export default function ShoppingListPage() {
         <p className="mt-2 text-white/75 text-sm md:text-base">
           Items:{" "}
           <span className="text-white/85 font-semibold">{totalVisibleCount}</span>{" "}
-          ΓÇó Total qty:{" "}
+          - Total qty:{" "}
           <span className="text-white/85 font-semibold">{totalVisibleQty}</span>{" "}
-          ΓÇó Crossed off:{" "}
+          - Crossed off:{" "}
           <span className="text-white/85 font-semibold">
             {crossedOffVisibleCount}
           </span>
-          {status ? <span className="text-white/55"> ΓÇó {status}</span> : null}
+          {status ? <span className="text-white/55"> - {status}</span> : null}
         </p>
 
         <div className="mt-1 text-xs md:text-sm text-white/55">
@@ -1782,7 +1784,7 @@ export default function ShoppingListPage() {
               type="button"
               className={btnSm}
               onClick={openDecisions}
-              title="Open already-have decisions (quiet ΓÇö no changes unless you choose)"
+              title="Open already-have decisions (quiet - no changes unless you choose)"
             >
               Decisions
             </button>
@@ -1792,7 +1794,7 @@ export default function ShoppingListPage() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <Link href="/meal-planning" className={btn}>
-          ΓåÉ Meal Planning
+          Meal Planning
         </Link>
 
         <button
@@ -1827,11 +1829,15 @@ export default function ShoppingListPage() {
     </div>
   );
 
+  function toggleFromReveal(groupKey: string) {
+    setFromOpenKeys((prev) => ({ ...(prev || {}), [groupKey]: !prev?.[groupKey] }));
+  }
+
   return (
     <RcPageShell header={header}>
       <div ref={pageRootRef} />
 
-      {/* Γ£à Simple Yes/No duplicate prompt */}
+      {/* Simple Yes/No duplicate prompt */}
       {addDupPrompt?.open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-6"
@@ -1850,7 +1856,7 @@ export default function ShoppingListPage() {
               <span className="text-white/85 font-semibold">
                 {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
               </span>{" "}
-              already in listΓÇª do you need this one too?
+              already in list... do you need this one too?
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2 flex-wrap">
@@ -1879,13 +1885,12 @@ export default function ShoppingListPage() {
                       return;
                     }
 
-                    setStatus("UpdatingΓÇª");
+                    setStatus("Updating...");
                     await patchItem(id, { quantity: itemQty(latest) + 1 });
                     setStatus("");
                     return;
                   }
 
-                  // actionIfYes === "add_new_row"
                   await addManualProceed(prompt.requestedName);
                 }}
               >
@@ -1936,7 +1941,7 @@ export default function ShoppingListPage() {
           <input
             value={newItemName}
             onChange={(e) => setNewItemName(e.target.value)}
-            placeholder="Add itemΓÇª (e.g., milk)"
+            placeholder="Add item... (e.g., milk)"
             className="w-full md:flex-1 rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
             onKeyDown={(e) => {
               if (e.key === "Enter") addManual();
@@ -1952,12 +1957,12 @@ export default function ShoppingListPage() {
           </button>
         </div>
         <div className="mt-2 text-xs text-white/55">
-          Add is immediate. If it matches something, youΓÇÖll get one Yes/No choice.
+          Add is immediate. If it matches something, you'll get one Yes/No choice.
         </div>
       </div>
 
       {loading ? (
-        <div className="mt-6 text-white/70">LoadingΓÇª</div>
+        <div className="mt-6 text-white/70">Loading...</div>
       ) : (
         <div className="mt-6 grid gap-5">
           {CATEGORY_ORDER.map((cat) => {
@@ -2016,6 +2021,21 @@ export default function ShoppingListPage() {
                     const meta = displayMeta(g.items[0]?.name || "");
                     const displayName = toTitleCaseSmart(g.display);
 
+                    const recipeLinks = uniqStrings(
+                      g.items
+                        .filter((it) => !!it.source_recipe_id)
+                        .map((it) => String(it.source_recipe_id))
+                    );
+
+                    const recipeTitles = uniqStrings(
+                      g.items
+                        .filter((it) => !!it.source_recipe_id)
+                        .map((it) => recipeLabelForItem(it) || "Recipe")
+                    );
+
+                    const hasRecipeSources = recipeLinks.length > 0;
+                    const showFrom = !!fromOpenKeys[g.key];
+
                     return (
                       <div
                         key={g.key}
@@ -2071,6 +2091,40 @@ export default function ShoppingListPage() {
                                   {g.items.length} entries
                                 </div>
                               ) : null}
+
+                              {/* From recipe reveal (collapsed by default) */}
+                              {hasRecipeSources ? (
+                                <div className="mt-2 text-xs text-white/55">
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-semibold hover:bg-white/10"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      toggleFromReveal(g.key);
+                                    }}
+                                    title="Show recipe sources (informational only)"
+                                  >
+                                    From {showFrom ? "▲" : "▼"}
+                                  </button>
+
+                                  {showFrom ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {recipeLinks.map((rid, i) => (
+                                        <Link
+                                          key={rid}
+                                          href={`/recipes/${rid}`}
+                                          className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-extrabold text-white/80 hover:bg-white/15 underline underline-offset-2"
+                                          onClick={(e) => e.stopPropagation()}
+                                          title="Open recipe"
+                                        >
+                                          {recipeTitles[i] || "Recipe"}
+                                        </Link>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
 
@@ -2088,7 +2142,7 @@ export default function ShoppingListPage() {
                                 else openGroupQtyPopover(g.key, ev);
                               }}
                             >
-                              ├ù{groupQty}
+                              {groupQty}
                             </button>
 
                             <button
@@ -2097,7 +2151,7 @@ export default function ShoppingListPage() {
                               title="Actions"
                               onClick={(ev) => openMenuPopover(g.key, ev)}
                             >
-                              ΓÇª
+                              ...
                             </button>
                           </div>
                         </div>
@@ -2121,7 +2175,7 @@ export default function ShoppingListPage() {
                                 Multiple entries
                               </div>
                               <div className="mt-1 text-xs text-white/55">
-                                Merge to edit quantity (doesnΓÇÖt happen automatically).
+                                Merge to edit quantity (doesn't happen automatically).
                               </div>
 
                               <div className="mt-3 flex items-center justify-end gap-2">
@@ -2181,7 +2235,7 @@ export default function ShoppingListPage() {
                                 return (
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="text-sm font-extrabold text-white/85">
-                                      Qty: ├ù{q}
+                                      Qty: {q}
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <button
@@ -2189,7 +2243,7 @@ export default function ShoppingListPage() {
                                         className={btnSm}
                                         onClick={() => adjustQty(it, -1)}
                                       >
-                                        ΓêÆ
+                                        -
                                       </button>
                                       <button
                                         type="button"
@@ -2228,7 +2282,7 @@ export default function ShoppingListPage() {
                             />
                             <div
                               className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-3 shadow-2xl"
-                              style={popoverStyle(menuAnchor, 260, 170)}
+                              style={popoverStyle(menuAnchor, 260, 210)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-center justify-between gap-2">
@@ -2260,6 +2314,18 @@ export default function ShoppingListPage() {
                                   Details
                                 </button>
 
+                                <button
+                                  type="button"
+                                  className={btnSm}
+                                  onClick={(ev) => {
+                                    const initial = displayBaseName(g.items[0]?.name || g.display);
+                                    openRenamePopover(g.key, initial, ev as any);
+                                  }}
+                                  title="Rename display name (updates item names)"
+                                >
+                                  Rename
+                                </button>
+
                                 {g.items.length > 1 ? (
                                   <button
                                     type="button"
@@ -2281,11 +2347,93 @@ export default function ShoppingListPage() {
                                     const ids = g.items.map((i) => i.id);
                                     setMenuOpenKey(null);
                                     setMenuAnchor(null);
-                                    setStatus("RemovingΓÇª");
+                                    setStatus("Removing...");
                                     deleteMany(ids).finally(() => setStatus(""));
                                   }}
                                 >
                                   Remove
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
+
+                        {/* Rename popover */}
+                        {renamePrompt?.open &&
+                        renamePrompt.groupKey === g.key &&
+                        renameAnchor ? (
+                          <>
+                            <div
+                              className="fixed inset-0 z-50"
+                              onMouseDown={() => {
+                                setRenamePrompt(null);
+                                setRenameAnchor(null);
+                              }}
+                              style={{ background: "transparent" }}
+                            />
+                            <div
+                              className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-4 shadow-2xl"
+                              style={popoverStyle(renameAnchor, 360, 170)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <div className="text-sm font-extrabold text-white/85">
+                                Rename
+                              </div>
+                              <div className="mt-1 text-xs text-white/55">
+                                Updates item names (keeps grouping stable).
+                              </div>
+
+                              <input
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                className="mt-3 w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-2.5 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                                placeholder="e.g., Whole Milk"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    const next = renameValue.trim();
+                                    if (!next) return;
+                                    const ids = g.items.map((i) => i.id);
+                                    setRenamePrompt(null);
+                                    setRenameAnchor(null);
+                                    closeAllPopovers();
+                                    setStatus("Renaming...");
+                                    patchMany(ids, { name: next }).finally(() =>
+                                      setStatus("")
+                                    );
+                                  }
+                                }}
+                              />
+
+                              <div className="mt-3 flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className={btnSm}
+                                  onClick={() => {
+                                    setRenamePrompt(null);
+                                    setRenameAnchor(null);
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className={btnSm}
+                                  onClick={() => {
+                                    const next = renameValue.trim();
+                                    if (!next) return;
+                                    const ids = g.items.map((i) => i.id);
+                                    setRenamePrompt(null);
+                                    setRenameAnchor(null);
+                                    closeAllPopovers();
+                                    setStatus("Renaming...");
+                                    patchMany(ids, { name: next }).finally(() =>
+                                      setStatus("")
+                                    );
+                                  }}
+                                >
+                                  Save
                                 </button>
                               </div>
                             </div>
@@ -2302,7 +2450,7 @@ export default function ShoppingListPage() {
 
                             <div
                               className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-4 shadow-2xl"
-                              style={popoverStyle(detailsAnchor, 340, 130)}
+                              style={popoverStyle(detailsAnchor, 340, 160)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -2325,22 +2473,20 @@ export default function ShoppingListPage() {
 
                               <div className="mt-3 flex items-center gap-2 flex-wrap">
                                 {(() => {
-                                  const recipeLinks = uniqStrings(
+                                  const recipeLinks2 = uniqStrings(
                                     g.items
                                       .filter((it) => !!it.source_recipe_id)
                                       .map((it) => String(it.source_recipe_id))
                                   );
 
-                                  const recipeTitles = uniqStrings(
+                                  const recipeTitles2 = uniqStrings(
                                     g.items
                                       .filter((it) => !!it.source_recipe_id)
-                                      .map(
-                                        (it) => recipeLabelForItem(it) || "Recipe"
-                                      )
+                                      .map((it) => recipeLabelForItem(it) || "Recipe")
                                   );
 
-                                  if (recipeLinks.length > 0) {
-                                    return recipeLinks.map((rid, i) => (
+                                  if (recipeLinks2.length > 0) {
+                                    return recipeLinks2.map((rid, i) => (
                                       <Link
                                         key={rid}
                                         href={`/recipes/${rid}`}
@@ -2348,7 +2494,7 @@ export default function ShoppingListPage() {
                                         onClick={(e) => e.stopPropagation()}
                                         title="Open recipe"
                                       >
-                                        {recipeTitles[i] || "Recipe"}
+                                        {recipeTitles2[i] || "Recipe"}
                                       </Link>
                                     ));
                                   }
@@ -2400,7 +2546,7 @@ export default function ShoppingListPage() {
                 checked={burnDontAskAgainChecked}
                 onChange={(e) => setBurnDontAskAgainChecked(e.target.checked)}
               />
-              DonΓÇÖt ask again
+              Don't ask again
             </label>
 
             <div className="mt-6 flex items-center justify-end gap-2 flex-wrap">
@@ -2488,7 +2634,7 @@ export default function ShoppingListPage() {
               </div>
 
               <div className="text-xs text-white/55">
-                This doesnΓÇÖt change your list ΓÇö it just clears highlights.
+                This doesn't change your list - it just clears highlights.
               </div>
             </div>
           </div>
@@ -2554,12 +2700,10 @@ export default function ShoppingListPage() {
                         const qty =
                           typeof s.quantity === "number" ? String(s.quantity) : "";
                         const unit = (s.unit || "").toString();
-                        const qtyLabel = qty
-                          ? `${qty}${unit ? ` ${unit}` : ""}`
-                          : "";
-                        return qtyLabel ? `${loc} ΓÇó ${qtyLabel}` : `${loc}`;
+                        const qtyLabel = qty ? `${qty}${unit ? ` ${unit}` : ""}` : "";
+                        return qtyLabel ? `${loc} - ${qtyLabel}` : `${loc}`;
                       })
-                      .join(" ┬╖ ");
+                      .join(" | ");
 
                     return (
                       <div
@@ -2574,8 +2718,7 @@ export default function ShoppingListPage() {
                             <div className="mt-1 text-sm text-white/55">
                               In storage:{" "}
                               <span className="text-white/75 font-semibold">
-                                {storagePreview ||
-                                  `${d.storageMatches.length} match(es)`}
+                                {storagePreview || `${d.storageMatches.length} match(es)`}
                               </span>
                             </div>
                           </div>

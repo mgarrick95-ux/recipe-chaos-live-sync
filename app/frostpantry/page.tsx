@@ -3,9 +3,9 @@
 
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import RcPageShell from "@/components/rc/RcPageShell";
 import ReceiptScanTool from "@/components/frostpantry/ReceiptScanTool";
+import RcPageHero from "@/components/rc/RcPageHero";
 
 /* =========================
    Types
@@ -99,10 +99,6 @@ function isOut(item: StorageItem) {
   return (item.quantity ?? 0) === 0;
 }
 
-function isLow(item: StorageItem) {
-  return (item.quantity ?? 0) === 1;
-}
-
 function isExpired(item: StorageItem) {
   if (isOut(item)) return false;
   const d = daysUntil(item.use_by);
@@ -143,17 +139,12 @@ function Chip({
   tone = "default",
 }: {
   text: string;
-  tone?: "default" | "low" | "out" | "expired";
+  tone?: "default" | "out" | "expired";
 }) {
   const styles: Record<string, React.CSSProperties> = {
     default: {
       borderColor: "rgba(255,255,255,0.12)",
       background: "rgba(255,255,255,0.06)",
-      color: "rgba(255,255,255,0.92)",
-    },
-    low: {
-      background: "rgba(56,189,248,0.12)",
-      borderColor: "rgba(56,189,248,0.35)",
       color: "rgba(255,255,255,0.92)",
     },
     out: {
@@ -188,6 +179,34 @@ function Chip({
 }
 
 /* =========================
+   Inline edit types
+========================= */
+
+type EditDraft = {
+  name: string;
+  location: Location;
+  quantity: number;
+  unit: string;
+  stored_on: string; // date input string ("" allowed)
+  use_by: string; // date input string ("" allowed)
+  notes: string;
+  is_leftover: boolean;
+};
+
+function makeDraftFromItem(it: StorageItem): EditDraft {
+  return {
+    name: it.name ?? "",
+    location: it.location ?? "Freezer",
+    quantity: Number.isFinite(Number(it.quantity)) ? Number(it.quantity) : 1,
+    unit: it.unit ?? "unit",
+    stored_on: it.stored_on ?? "",
+    use_by: it.use_by ?? "",
+    notes: it.notes ?? "",
+    is_leftover: Boolean(it.is_leftover),
+  };
+}
+
+/* =========================
    Page
 ========================= */
 
@@ -208,7 +227,7 @@ export default function FrostPantryPage() {
   // Inline panels
   const [addPanel, setAddPanel] = useState<AddPanel>("none");
 
-  // "Add ▾" opens the 3 option buttons
+  // Add popover
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
   const addOptionsRef = useRef<HTMLDivElement | null>(null);
 
@@ -222,6 +241,15 @@ export default function FrostPantryPage() {
   const [addUseBy, setAddUseBy] = useState<string>("");
   const [addUseByAuto, setAddUseByAuto] = useState<boolean>(true);
   const [addBusy, setAddBusy] = useState(false);
+
+  // Shop day (already exists in your UI)
+  const [shopDay, setShopDay] = useState<string>("Sunday");
+
+  // Inline edit state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [editUseByAuto, setEditUseByAuto] = useState<boolean>(false);
+  const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -263,13 +291,34 @@ export default function FrostPantryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  // Keep use-by in sync while auto
+  // Keep use-by in sync while auto (Add panel)
   useEffect(() => {
     if (addPanel !== "type") return;
     const computed = computeDefaultUseBy(addLocation, addStoredOn, addUseBy, addUseByAuto);
     if (computed.use_by !== addUseBy) setAddUseBy(computed.use_by);
     if (computed.useByAuto !== addUseByAuto) setAddUseByAuto(computed.useByAuto);
   }, [addPanel, addLocation, addStoredOn, addUseBy, addUseByAuto]);
+
+  // Keep use-by in sync while auto (Edit inline)
+  useEffect(() => {
+    if (!editId || !editDraft) return;
+    const stored = editDraft.stored_on || "";
+    if (!stored) return;
+
+    const computed = computeDefaultUseBy(
+      editDraft.location,
+      stored,
+      editDraft.use_by ?? "",
+      editUseByAuto
+    );
+
+    if (computed.use_by !== editDraft.use_by) {
+      setEditDraft((prev) => (prev ? { ...prev, use_by: computed.use_by } : prev));
+    }
+    if (computed.useByAuto !== editUseByAuto) {
+      setEditUseByAuto(computed.useByAuto);
+    }
+  }, [editId, editDraft?.location, editDraft?.stored_on, editDraft?.use_by, editUseByAuto]);
 
   /* =========================
      Derived lists
@@ -352,6 +401,10 @@ export default function FrostPantryPage() {
       setItems((prev) =>
         prev.map((i) => (i.id === id ? { ...i, quantity: nextQty } : i))
       );
+
+      if (editId === id) {
+        setEditDraft((prev) => (prev ? { ...prev, quantity: nextQty } : prev));
+      }
     } catch (e: any) {
       console.error(e);
       setErrorMsg(e?.message ?? "Failed to update quantity");
@@ -375,6 +428,12 @@ export default function FrostPantryPage() {
 
       setItems((prev) => prev.filter((i) => i.id !== id));
       setSelectedIds((prev) => prev.filter((x) => x !== id));
+
+      if (editId === id) {
+        setEditId(null);
+        setEditDraft(null);
+        setEditUseByAuto(false);
+      }
     } catch (e: any) {
       console.error(e);
       setErrorMsg(e?.message ?? "Failed to delete item");
@@ -418,6 +477,12 @@ export default function FrostPantryPage() {
       if (succeeded.length > 0) {
         setItems((prev) => prev.filter((i) => !succeeded.includes(i.id)));
         setSelectedIds((prev) => prev.filter((id) => !succeeded.includes(id)));
+
+        if (editId && succeeded.includes(editId)) {
+          setEditId(null);
+          setEditDraft(null);
+          setEditUseByAuto(false);
+        }
       }
 
       if (failed.length > 0) {
@@ -495,82 +560,169 @@ export default function FrostPantryPage() {
     }
   }
 
+  function startInlineEdit(item: StorageItem) {
+    setErrorMsg("");
+    setEditId(item.id);
+    const draft = makeDraftFromItem(item);
+    setEditDraft(draft);
+
+    const initialAuto = !draft.use_by?.trim();
+    setEditUseByAuto(initialAuto);
+
+    if (initialAuto) {
+      const stored = draft.stored_on || todayAsDateInput();
+      const computed = computeDefaultUseBy(draft.location, stored, "", true);
+      setEditDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              stored_on: stored,
+              use_by: computed.use_by,
+            }
+          : prev
+      );
+    }
+  }
+
+  function cancelInlineEdit() {
+    setEditId(null);
+    setEditDraft(null);
+    setEditUseByAuto(false);
+  }
+
+  async function saveInlineEdit(id: string) {
+    if (!editDraft) return;
+
+    const name = editDraft.name.trim();
+    if (!name) {
+      setErrorMsg("Name can’t be empty.");
+      return;
+    }
+
+    setEditBusy(true);
+    setErrorMsg("");
+
+    try {
+      const payload = {
+        name,
+        location: editDraft.location,
+        quantity: Math.max(0, Number(editDraft.quantity) || 0),
+        unit: editDraft.unit.trim() || "unit",
+        stored_on: editDraft.stored_on?.trim() ? editDraft.stored_on.trim() : null,
+        use_by: editDraft.use_by?.trim() ? editDraft.use_by.trim() : null,
+        notes: editDraft.notes?.trim() ? editDraft.notes.trim() : null,
+        is_leftover: Boolean(editDraft.is_leftover),
+      };
+
+      const res = await fetch(`/api/storage-items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || (json && json.ok === false))
+        throw new Error(json?.error || "Failed to update item");
+
+      setItems((prev) =>
+        prev.map((it) => (it.id === id ? { ...it, ...payload } : it))
+      );
+
+      cancelInlineEdit();
+    } catch (e: any) {
+      console.error(e);
+      setErrorMsg(e?.message ?? "Failed to update item");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   /* =========================
-     Header
+     Header / Hero
   ========================= */
 
-  const pill =
-    "rounded-full bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold ring-1 ring-white/10 transition";
-  const pillActive =
-    "rounded-full bg-fuchsia-500/80 hover:bg-fuchsia-500 px-4 py-2.5 text-sm font-extrabold text-white ring-1 ring-white/10 transition";
+  const tealPill =
+    "rounded-full bg-emerald-500/0 hover:bg-emerald-500/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 text-white/85 transition";
+  const tealPillActive =
+    "rounded-full bg-emerald-500/20 hover:bg-emerald-500/25 px-5 py-3 text-sm font-extrabold ring-1 ring-white/10 text-white transition";
+
+  const addBtn =
+    "rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 text-white/90 transition";
+  const popItem =
+    "w-full text-left rounded-xl px-4 py-3 text-sm font-semibold text-white/90 hover:bg-white/10 transition";
+
+  const heroChaos = [
+    { id: "jar", emoji: "🫙" },
+    { id: "milk", emoji: "🥛" },
+    { id: "box", emoji: "📦" },
+    { id: "cheese", emoji: "🧀" },
+    { id: "can", emoji: "🥫" },
+    { id: "spark1", emoji: "✨" },
+    { id: "spark2", emoji: "✦" },
+    { id: "ice", emoji: "🧊" },
+    { id: "tag", emoji: "🏷️" },
+    { id: "bowl", emoji: "🥣" },
+    { id: "bread", emoji: "🍞" },
+    { id: "apple", emoji: "🍏" },
+  ];
 
   const header = (
-    <div className="flex items-start justify-between gap-4 flex-wrap">
-      <div className="min-w-0">
-        <h1 className="text-6xl font-extrabold tracking-tight">
-          Pantry &amp; Freezer{" "}
-          <span className="inline-block align-middle ml-2 h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_30px_rgba(232,121,249,0.35)]" />
-        </h1>
-
-        <p className="mt-3 text-white/75 text-lg">What’s around, more or less.</p>
-
-        <div className="mt-3 text-white/50 text-sm">
-          <span className="text-white/40">Recipes link:</span>{" "}
-          <Link
-            href="/recipes"
-            className="underline underline-offset-4 text-white/70 hover:text-white"
-          >
-            Recipes
-          </Link>
-        </div>
-
-        <div className="mt-6 flex items-center gap-2 flex-wrap">
-          <FilterPill label="All" active={activeFilter === "all"} onClick={() => setActiveFilter("all")} />
-          <FilterPill label="Use Soon-ish" active={activeFilter === "soonish"} onClick={() => setActiveFilter("soonish")} />
-          <FilterPill label="Leftovers" active={activeFilter === "leftovers"} onClick={() => setActiveFilter("leftovers")} />
-          <FilterPill label="Freezer" active={activeFilter === "freezer"} onClick={() => setActiveFilter("freezer")} />
-          <FilterPill label="Fridge" active={activeFilter === "fridge"} onClick={() => setActiveFilter("fridge")} />
-          <FilterPill label="Pantry" active={activeFilter === "pantry"} onClick={() => setActiveFilter("pantry")} />
-        </div>
-      </div>
-
-      {/* Add ▾ -> reveals 3 options */}
-      <div className="flex items-center gap-2 flex-wrap" ref={addOptionsRef}>
-        <button
-          type="button"
-          className={pill}
-          onClick={() => setAddOptionsOpen((v) => !v)}
-          aria-expanded={addOptionsOpen}
-        >
-          Add ▾
-        </button>
-
-        {addOptionsOpen ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button type="button" className={addPanel === "type" ? pillActive : pill} onClick={() => openPanel("type")}>
-              Type It
-            </button>
-            <button type="button" className={addPanel === "paste" ? pillActive : pill} onClick={() => openPanel("paste")}>
-              Paste It
-            </button>
-            <button type="button" className={addPanel === "upload" ? pillActive : pill} onClick={() => openPanel("upload")}>
-              Upload It
-            </button>
-
-            {addPanel !== "none" ? (
+    <div className="mt-2">
+      <RcPageHero
+        title="Pantry & Freezer"
+        tagline="lets see what you got"
+        chaosItems={heroChaos}
+        heightClass="min-h-[310px]"
+        rightSlot={
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={addOptionsRef}>
               <button
                 type="button"
-                className={pill}
-                onClick={() => {
-                  setAddPanel("none");
-                  setAddOptionsOpen(false);
-                }}
+                className={addBtn}
+                onClick={() => setAddOptionsOpen((v) => !v)}
+                aria-expanded={addOptionsOpen}
               >
-                Close
+                Add ▾
               </button>
-            ) : null}
+
+              {addOptionsOpen ? (
+                <div className="absolute right-0 mt-2 w-[220px] rounded-2xl bg-[#0b1026]/95 ring-1 ring-white/10 shadow-xl p-2 z-50">
+                  <button type="button" className={popItem} onClick={() => openPanel("type")}>
+                    Type It
+                  </button>
+                  <button type="button" className={popItem} onClick={() => openPanel("paste")}>
+                    Paste It
+                  </button>
+                  <button type="button" className={popItem} onClick={() => openPanel("upload")}>
+                    Upload It
+                  </button>
+
+                  <div className="mt-2 pt-2 border-t border-white/10">
+                    <button
+                      type="button"
+                      className={popItem}
+                      onClick={() => {
+                        setAddPanel("none");
+                        setAddOptionsOpen(false);
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
-        ) : null}
+        }
+      />
+
+      <div className="mt-6 flex items-center justify-center gap-2 flex-wrap">
+        <FilterPill label="All" active={activeFilter === "all"} onClick={() => setActiveFilter("all")} base={tealPill} activeCls={tealPillActive} />
+        <FilterPill label="Use Soon-ish" active={activeFilter === "soonish"} onClick={() => setActiveFilter("soonish")} base={tealPill} activeCls={tealPillActive} />
+        <FilterPill label="Leftovers" active={activeFilter === "leftovers"} onClick={() => setActiveFilter("leftovers")} base={tealPill} activeCls={tealPillActive} />
+        <FilterPill label="Freezer" active={activeFilter === "freezer"} onClick={() => setActiveFilter("freezer")} base={tealPill} activeCls={tealPillActive} />
+        <FilterPill label="Fridge" active={activeFilter === "fridge"} onClick={() => setActiveFilter("fridge")} base={tealPill} activeCls={tealPillActive} />
+        <FilterPill label="Pantry" active={activeFilter === "pantry"} onClick={() => setActiveFilter("pantry")} base={tealPill} activeCls={tealPillActive} />
       </div>
     </div>
   );
@@ -579,6 +731,16 @@ export default function FrostPantryPage() {
      Render
   ========================= */
 
+  const fieldLabel = "text-xs text-white/55";
+  const input =
+    "w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
+  const select =
+    "w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
+
+  const iconBtn =
+    "inline-flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white transition";
+  const iconBtnDisabled = "opacity-50 pointer-events-none";
+
   return (
     <RcPageShell header={header}>
       {/* Type It */}
@@ -586,7 +748,7 @@ export default function FrostPantryPage() {
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-2xl font-extrabold tracking-tight">Type It</div>
+              <div className="text-2xl font-extrabold tracking-tight text-white">Type It</div>
               <div className="mt-1 text-sm text-white/60">Quick add an item.</div>
             </div>
           </div>
@@ -597,14 +759,14 @@ export default function FrostPantryPage() {
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
                 placeholder="Item name"
-                className="w-[320px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                className="w-[320px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
                 autoFocus
               />
 
               <select
                 value={addLocation}
                 onChange={(e) => setAddLocation(e.target.value as Location)}
-                className="w-[180px] rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                className="w-[180px] rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
               >
                 <option value="Freezer">Freezer</option>
                 <option value="Fridge">Fridge</option>
@@ -616,14 +778,14 @@ export default function FrostPantryPage() {
                 min={1}
                 value={addQty}
                 onChange={(e) => setAddQty(Number(e.target.value) || 1)}
-                className="w-[120px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                className="w-[120px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
               />
 
               <input
                 value={addUnit}
                 onChange={(e) => setAddUnit(e.target.value)}
                 placeholder="unit"
-                className="w-[160px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                className="w-[160px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
               />
             </div>
 
@@ -634,7 +796,7 @@ export default function FrostPantryPage() {
                   type="date"
                   value={addStoredOn}
                   onChange={(e) => setAddStoredOn(e.target.value)}
-                  className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                  className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
                 />
               </div>
 
@@ -648,7 +810,7 @@ export default function FrostPantryPage() {
                     setAddUseBy(next);
                     setAddUseByAuto(next.trim() === "");
                   }}
-                  className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                  className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
                 />
               </div>
 
@@ -662,7 +824,7 @@ export default function FrostPantryPage() {
               <button
                 type="button"
                 onClick={() => setAddPanel("none")}
-                className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+                className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3 text-white/90"
               >
                 Never mind
               </button>
@@ -670,7 +832,7 @@ export default function FrostPantryPage() {
               <button
                 type="submit"
                 disabled={addBusy || !addName.trim()}
-                className="rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 px-5 py-3 font-semibold disabled:opacity-50 shadow-lg shadow-fuchsia-500/20"
+                className="rounded-2xl bg-emerald-400/80 hover:bg-emerald-400 px-5 py-3 font-semibold text-black disabled:opacity-50 shadow-lg shadow-emerald-400/10"
               >
                 {addBusy ? "Saving…" : "Add item"}
               </button>
@@ -682,7 +844,7 @@ export default function FrostPantryPage() {
       {/* Paste It */}
       {addPanel === "paste" ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
-          <div className="text-2xl font-extrabold tracking-tight">Paste It</div>
+          <div className="text-2xl font-extrabold tracking-tight text-white">Paste It</div>
           <div className="mt-1 text-sm text-white/60">
             Paste receipt text. Review first. Add only what you want.
           </div>
@@ -704,7 +866,7 @@ export default function FrostPantryPage() {
       {/* Upload It */}
       {addPanel === "upload" ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
-          <div className="text-2xl font-extrabold tracking-tight">Upload It</div>
+          <div className="text-2xl font-extrabold tracking-tight text-white">Upload It</div>
           <div className="mt-1 text-sm text-white/60">
             Upload a receipt file. Review first. Add only what you want.
           </div>
@@ -732,7 +894,7 @@ export default function FrostPantryPage() {
 
       {/* Use Soon-ish */}
       {soonishMain.length > 0 ? (
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6 text-white">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-2xl font-extrabold tracking-tight">Use Soon-ish</h2>
@@ -764,7 +926,7 @@ export default function FrostPantryPage() {
 
       {/* Expired mini */}
       {expiredItems.length > 0 ? (
-        <div className="mt-3 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4">
+        <div className="mt-3 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4 text-white">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-sm text-white/75">
               <span className="font-semibold text-white/85">Expired</span>{" "}
@@ -782,7 +944,7 @@ export default function FrostPantryPage() {
       ) : null}
 
       {/* Actions bar */}
-      <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
+      <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 text-white">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm text-white/60">
             Showing{" "}
@@ -791,6 +953,23 @@ export default function FrostPantryPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <div className="rounded-full bg-white/6 ring-1 ring-white/10 px-4 py-2 text-sm text-white/75">
+              Shop day:{" "}
+              <select
+                value={shopDay}
+                onChange={(e) => setShopDay(e.target.value)}
+                className="bg-transparent outline-none text-white/90 font-semibold"
+              >
+                <option className="bg-[#0b1026]" value="Sunday">Sunday</option>
+                <option className="bg-[#0b1026]" value="Monday">Monday</option>
+                <option className="bg-[#0b1026]" value="Tuesday">Tuesday</option>
+                <option className="bg-[#0b1026]" value="Wednesday">Wednesday</option>
+                <option className="bg-[#0b1026]" value="Thursday">Thursday</option>
+                <option className="bg-[#0b1026]" value="Friday">Friday</option>
+                <option className="bg-[#0b1026]" value="Saturday">Saturday</option>
+              </select>
+            </div>
+
             <button
               type="button"
               onClick={toggleSelectAllFiltered}
@@ -837,9 +1016,10 @@ export default function FrostPantryPage() {
           {filtered.map((item) => {
             const checked = selectedSet.has(item.id);
             const expired = isExpired(item);
+            const isEditing = editId === item.id;
 
             return (
-              <div key={item.id} className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+              <div key={item.id} className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 text-white">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex items-start gap-4">
                     <label className="flex items-center gap-2 pt-1 cursor-pointer">
@@ -847,7 +1027,7 @@ export default function FrostPantryPage() {
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleSelected(item.id)}
-                        className="h-4 w-4 accent-fuchsia-500"
+                        className="h-4 w-4 accent-emerald-400"
                       />
                     </label>
 
@@ -856,7 +1036,6 @@ export default function FrostPantryPage() {
                         <div className="text-2xl font-extrabold tracking-tight">{item.name}</div>
 
                         {isOut(item) ? <Chip text="Out" tone="out" /> : null}
-                        {!isOut(item) && isLow(item) ? <Chip text="Low" tone="low" /> : null}
                         {expired ? <Chip text="Expired" tone="expired" /> : null}
                         {item.is_leftover ? <Chip text="Leftover" /> : null}
 
@@ -880,7 +1059,7 @@ export default function FrostPantryPage() {
                     <div className="flex items-center gap-2">
                       <button
                         className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                        disabled={busyId === item.id || bulkBusy}
+                        disabled={busyId === item.id || bulkBusy || editBusy}
                         onClick={() => changeQuantity(item.id, -1)}
                         type="button"
                       >
@@ -893,7 +1072,7 @@ export default function FrostPantryPage() {
 
                       <button
                         className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2"
-                        disabled={busyId === item.id || bulkBusy}
+                        disabled={busyId === item.id || bulkBusy || editBusy}
                         onClick={() => changeQuantity(item.id, +1)}
                         type="button"
                       >
@@ -901,23 +1080,193 @@ export default function FrostPantryPage() {
                       </button>
                     </div>
 
-                    <Link
-                      href={`/frostpantry/edit/${item.id}`}
-                      className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
-                    >
-                      Edit
-                    </Link>
-
+                    {/* Icon-only edit */}
                     <button
-                      className="rounded-2xl bg-red-600 hover:bg-red-500 px-5 py-3 disabled:opacity-60"
-                      disabled={busyId === item.id || bulkBusy}
+                      type="button"
+                      onClick={() => (isEditing ? cancelInlineEdit() : startInlineEdit(item))}
+                      className={[
+                        iconBtn,
+                        (bulkBusy || editBusy || busyId === item.id) ? iconBtnDisabled : "",
+                      ].join(" ")}
+                      disabled={bulkBusy || editBusy || busyId === item.id}
+                      title={isEditing ? "Close edit" : "Edit inline"}
+                      aria-label={isEditing ? "Close edit" : "Edit inline"}
+                    >
+                      <span className="text-xl leading-none">{isEditing ? "✖️" : "✏️"}</span>
+                    </button>
+
+                    {/* Icon-only delete */}
+                    <button
+                      className={[
+                        iconBtn,
+                        "text-red-200 hover:text-red-100",
+                        (busyId === item.id || bulkBusy || editBusy) ? iconBtnDisabled : "",
+                      ].join(" ")}
+                      disabled={busyId === item.id || bulkBusy || editBusy}
                       onClick={() => deleteItem(item.id)}
                       type="button"
+                      title="Delete"
+                      aria-label="Delete"
                     >
-                      Delete
+                      <span className="text-xl leading-none">💣</span>
                     </button>
                   </div>
                 </div>
+
+                {/* Inline edit panel */}
+                {isEditing && editDraft ? (
+                  <div className="mt-6 rounded-3xl bg-black/20 ring-1 ring-white/10 p-5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="text-lg font-extrabold tracking-tight">Edit item</div>
+                        <div className="mt-1 text-sm text-white/60">
+                          Inline, on purpose. No teleporting to another page.
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={cancelInlineEdit}
+                          disabled={editBusy}
+                          className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => saveInlineEdit(item.id)}
+                          disabled={editBusy || !editDraft.name.trim()}
+                          className="rounded-2xl bg-emerald-400/80 hover:bg-emerald-400 px-4 py-2 text-sm font-extrabold text-black disabled:opacity-50 shadow-lg shadow-emerald-400/10"
+                        >
+                          {editBusy ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div className="md:col-span-2">
+                        <div className={fieldLabel}>Name</div>
+                        <input
+                          value={editDraft.name}
+                          onChange={(e) =>
+                            setEditDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                          }
+                          className={input}
+                          placeholder="Item name"
+                        />
+                      </div>
+
+                      <div>
+                        <div className={fieldLabel}>Location</div>
+                        <select
+                          value={editDraft.location}
+                          onChange={(e) =>
+                            setEditDraft((prev) =>
+                              prev ? { ...prev, location: e.target.value as Location } : prev
+                            )
+                          }
+                          className={select}
+                        >
+                          <option value="Freezer">Freezer</option>
+                          <option value="Fridge">Fridge</option>
+                          <option value="Pantry">Pantry</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className={fieldLabel}>Quantity</div>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.quantity}
+                            onChange={(e) =>
+                              setEditDraft((prev) =>
+                                prev
+                                  ? { ...prev, quantity: Math.max(0, Number(e.target.value) || 0) }
+                                  : prev
+                              )
+                            }
+                            className={input}
+                          />
+                        </div>
+
+                        <div>
+                          <div className={fieldLabel}>Unit</div>
+                          <input
+                            value={editDraft.unit}
+                            onChange={(e) =>
+                              setEditDraft((prev) => (prev ? { ...prev, unit: e.target.value } : prev))
+                            }
+                            className={input}
+                            placeholder="bag, jar, box…"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className={fieldLabel}>Stored on</div>
+                        <input
+                          type="date"
+                          value={editDraft.stored_on || ""}
+                          onChange={(e) =>
+                            setEditDraft((prev) =>
+                              prev ? { ...prev, stored_on: e.target.value } : prev
+                            )
+                          }
+                          className={input}
+                        />
+                      </div>
+
+                      <div>
+                        <div className={fieldLabel}>Use by</div>
+                        <input
+                          type="date"
+                          value={editDraft.use_by || ""}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setEditDraft((prev) => (prev ? { ...prev, use_by: next } : prev));
+                            setEditUseByAuto(next.trim() === "");
+                          }}
+                          className={input}
+                        />
+                        <div className="mt-1 text-xs text-white/45">
+                          Defaults: Fridge 30d • Pantry/Freezer 6mo
+                          {!editUseByAuto ? <span className="text-white/40"> • manual</span> : null}
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-white/80">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(editDraft.is_leftover)}
+                            onChange={(e) =>
+                              setEditDraft((prev) =>
+                                prev ? { ...prev, is_leftover: e.target.checked } : prev
+                              )
+                            }
+                            className="h-4 w-4 accent-emerald-400"
+                          />
+                          Leftover
+                        </label>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <div className={fieldLabel}>Notes</div>
+                        <input
+                          value={editDraft.notes}
+                          onChange={(e) =>
+                            setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))
+                          }
+                          className={input}
+                          placeholder="Optional notes…"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -933,16 +1282,15 @@ function FilterPill({
   label,
   active,
   onClick,
+  base,
+  activeCls,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  base: string;
+  activeCls: string;
 }) {
-  const base =
-    "group relative inline-flex items-center gap-3 rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
-  const activeCls =
-    "group relative inline-flex items-center gap-3 rounded-full bg-fuchsia-500/80 hover:bg-fuchsia-500 px-5 py-3 text-sm font-extrabold text-white ring-1 ring-white/10 transition";
-
   return (
     <button type="button" onClick={onClick} className={active ? activeCls : base}>
       {label}

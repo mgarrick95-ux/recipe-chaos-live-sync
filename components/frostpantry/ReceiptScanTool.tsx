@@ -28,6 +28,8 @@ type ParsedReceiptItem = {
 type ReceiptParseResponse = {
   items?: ParsedReceiptItem[];
   error?: string;
+  message?: string;
+  debug?: any;
 };
 
 type ReceiptRow = {
@@ -62,12 +64,11 @@ function normalizePurchaseItemName(raw: string) {
 
   const trimTail = (v: string) => v.replace(/[,\-–—:\s]+$/g, "").trim();
 
-  s = s.replace(
-    /\s*,?\s*sold in\s+(singles?|each|bulk|bunch(es)?|bags?)\b.*$/i,
-    ""
-  );
+  // Strip “sold in ...” tail
+  s = s.replace(/\s*,?\s*sold in\s+(singles?|each|bulk|bunch(es)?|bags?)\b.*$/i, "");
   s = trimTail(s);
 
+  // Strip size ranges and single sizes at end
   s = s.replace(
     /\s*,?\s*\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*(kg|g|lb|lbs|oz|ml|l|liters?|litres?)\b\.?\s*$/i,
     ""
@@ -83,29 +84,32 @@ function normalizePurchaseItemName(raw: string) {
   s = s.replace(/\s*\b\d+(\.\d+)?(kg|g|lb|lbs|oz|ml|l)\b\.?\s*$/i, "");
   s = trimTail(s);
 
+  // Strip “6 x 710 mL” tail style
   s = s.replace(
     /\s*,?\s*\d+(\.\d+)?\s*[x×]\s*\d*(\.\d+)?\s*(kg|g|lb|lbs|oz|ml|l|liters?|litres?)\b\.?\s*$/i,
     ""
   );
   s = trimTail(s);
 
+  // Strip pack/count at end
   s = s.replace(/\s*,?\s*\d+\s*(pack|pk|ct|count)\b\.?\s*$/i, "");
   s = trimTail(s);
 
+  // Strip trailing “6 x”
   s = s.replace(/\s*,?\s*\d+\s*[x×]\s*$/i, "");
   s = trimTail(s);
 
-  s = s.replace(
-    /\s*,?\s*(prepared in|made in|product of|imported)\b[^,]*$/i,
-    ""
-  );
+  // Strip origin/prep tails
+  s = s.replace(/\s*,?\s*(prepared in|made in|product of|imported)\b[^,]*$/i, "");
   s = trimTail(s);
 
+  // If it ends with a stray number, drop it
   if (/(,|\s)\d+(\.\d+)?\s*$/.test(s) && /[a-zA-Z]/.test(s)) {
     s = s.replace(/\s*,?\s*\d+(\.\d+)?\s*$/i, "");
     s = trimTail(s);
   }
 
+  // Drop pure meta comma parts
   const parts = s
     .split(",")
     .map((p) => p.trim())
@@ -125,12 +129,218 @@ function normalizePurchaseItemName(raw: string) {
     if (nextParts.length > 0) s = nextParts.join(", ");
   }
 
+  // Drop trailing paren-weight like “(140 gummies)”
   if (/\(\s*\d+[^)]*\)\s*$/i.test(s)) {
     s = s.replace(/\s*\(\s*\d+[^)]*\)\s*$/i, "");
     s = trimTail(s);
   }
 
+  // ✅ De-brand + reduce to useful name (but not too generic)
+  s = toCommonName(s);
+
   return s || cleanName(raw || "");
+}
+
+/**
+ * Convert receipt product titles into “what a human would call it”,
+ * BUT keep *signal* for snack categories (chips/candy/crackers).
+ *
+ * Examples:
+ * - "Breton Gluten Free Garden Vegetable Crackers, Dare" -> "Breton Crackers — Gluten Free"
+ * - "Chef Boyardee Beefaroni Pasta..." -> "Beefaroni"
+ * - "Dare Juicee Beans Candy, Jelly Beans" -> "Dare Juicee Beans Jelly Beans"
+ */
+function toCommonName(input: string) {
+  let s = cleanName(input || "");
+  if (!s) return s;
+
+  s = s.replace(/[®™]/g, "");
+  s = s.replace(/\s+/g, " ").trim();
+
+  const lower = s.toLowerCase();
+
+  // Explicit defaults you asked for
+  if (/\bcoca[-\s]?cola\b/.test(lower)) return "Coke";
+  if (/\bmini\s+eggs\b/.test(lower)) return "Mini eggs";
+
+  const hasGF = /\bgluten\s*free\b|\bgf\b/i.test(s);
+
+  // classify as “snack-ish” where brand helps you differentiate
+  const isSnack =
+    /\b(crackers?|chips?|candy|chocolate|cookies?|pretzels?|snacks?)\b/i.test(s);
+
+  // Brand handling:
+  // - always drop these (you said "don’t need boyardee")
+  const alwaysDropBrands = [
+    "Chef Boyardee",
+    "Dairyland",
+    "Great Value",
+    "Mann's",
+    "Manns",
+    "Bergeron",
+    "Mastro",
+    "Vitafusion",
+    "Our Finest",
+  ];
+
+  // - keep these *only for snack items* (they’re useful signal)
+  const keepBrandsForSnacks = ["Breton", "Cadbury", "Dare", "Town House", "Kellogg's", "Kelloggs"];
+
+  // If snack + starts with keep-brand, preserve it
+  let keptBrand: string | null = null;
+  if (isSnack) {
+    for (const b of keepBrandsForSnacks) {
+      const re = new RegExp(`^${escapeRegExp(b)}\\b`, "i");
+      if (re.test(s)) {
+        keptBrand = b;
+        break;
+      }
+    }
+  }
+
+  // Remove always-drop brands if present at start
+  for (const b of alwaysDropBrands) {
+    const re = new RegExp(`^${escapeRegExp(b)}\\b\\s*`, "i");
+    s = s.replace(re, "");
+  }
+
+  // If we kept a snack brand, remove it temporarily so we can extract the core noun phrase cleanly
+  if (keptBrand) {
+    const re = new RegExp(`^${escapeRegExp(keptBrand)}\\b\\s*`, "i");
+    s = s.replace(re, "");
+  }
+
+  // strip mild fluff words
+  s = s.replace(/\b(original|classic|signature|premium|extra|mature|stringless|mini-bites|garden vegetable|chocolatey)\b/gi, " ");
+  s = s.replace(/\s+/g, " ").trim();
+
+  // Work on the first chunk; receipts love comma soup
+  const firstChunk = s.split(",")[0]?.trim() || s;
+
+  // phrase wins (most “human”)
+  const phraseRules: Array<{ test: RegExp; out: string }> = [
+    { test: /\bsour cream\b/i, out: "Sour cream" },
+    { test: /\bjelly beans\b/i, out: "Jelly beans" },
+    { test: /\bjuicee beans\b/i, out: "Juicee Beans" },
+    { test: /\bsnap peas\b/i, out: "Snap peas" },
+    { test: /\bmini cucumbers\b/i, out: "Mini cucumbers" },
+    { test: /\bbeefaroni\b/i, out: "Beefaroni" },
+    { test: /\bravioli\b/i, out: "Ravioli" },
+    { test: /\bcheddar\b/i, out: "Cheddar cheese" },
+  ];
+
+  let core: string | null = null;
+
+  // For snack items, try to keep “what kind” (not just “candy”)
+  if (isSnack) {
+    // If line contains a specific candy/snack phrase, use it (and allow stacking)
+    const picks: string[] = [];
+    for (const rule of phraseRules) {
+      if (rule.test.test(firstChunk)) picks.push(rule.out);
+    }
+
+    // If nothing matched, fall back to a trimmed chunk but avoid single generic category words
+    if (picks.length > 0) {
+      // de-dupe
+      core = Array.from(new Set(picks)).join(" ");
+    } else {
+      // Remove generic category-only words if they’d be the entire output
+      let tmp = firstChunk
+        .replace(/\b(candy|snack|snacks|chips|crackers|cracker|chocolate)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      // If that made it empty, then keep the category (better than blank)
+      if (!tmp) tmp = firstChunk.trim();
+
+      // shorten very long snack names but keep 2–6 words so it’s identifiable
+      const w = tmp.split(" ").filter(Boolean);
+      if (w.length > 7) tmp = w.slice(0, 7).join(" ");
+
+      core = capitalize(tmp);
+    }
+  } else {
+    // Non-snack items: more aggressive simplification is fine
+    for (const rule of phraseRules) {
+      if (rule.test.test(firstChunk)) {
+        core = rule.out;
+        break;
+      }
+    }
+
+    if (!core) {
+      const nouns = [
+        "sour cream",
+        "cream",
+        "cheddar cheese",
+        "cheese",
+        "cucumbers",
+        "peas",
+        "beans",
+        "ravioli",
+        "meatballs",
+        "charcuterie",
+        "veggie tray",
+        "tray",
+        "dip",
+      ];
+
+      const words = firstChunk.split(" ").filter(Boolean);
+      const joinedLower = words.join(" ").toLowerCase();
+
+      for (const n of nouns.sort((a, b) => b.length - a.length)) {
+        if (joinedLower.includes(n)) {
+          core = capitalize(n);
+          break;
+        }
+      }
+    }
+
+    if (!core) {
+      let tmp = firstChunk.trim();
+      const w = tmp.split(" ").filter(Boolean);
+      if (w.length > 6) tmp = w.slice(0, 6).join(" ");
+      core = capitalize(tmp);
+    }
+  }
+
+  // Reapply kept brand for snack items
+  let out = core || capitalize(firstChunk.trim());
+
+  if (keptBrand) {
+    // Avoid doubling if core already starts with brand
+    const lowerOut = out.toLowerCase();
+    if (!lowerOut.startsWith(keptBrand.toLowerCase())) {
+      out = `${keptBrand} ${out}`.trim();
+    }
+  }
+
+  // Gluten Free formatting:
+  // You asked for “Breton Crackers - Gluten Free” style (suffix is clearer in lists).
+  if (hasGF) {
+    if (!/gluten[-\s]?free/i.test(out)) out = `${out} — Gluten Free`;
+  }
+
+  // Last safety: don’t return a single ultra-generic word when we can avoid it
+  if (/^(candy|crackers?|chips?)$/i.test(out.trim()) && firstChunk.trim()) {
+    // fallback to something more descriptive from the chunk
+    const w = firstChunk.trim().split(" ").filter(Boolean);
+    if (w.length >= 2) out = capitalize(w.slice(0, Math.min(5, w.length)).join(" "));
+    if (keptBrand && !out.toLowerCase().startsWith(keptBrand.toLowerCase()))
+      out = `${keptBrand} ${out}`.trim();
+    if (hasGF && !/gluten[-\s]?free/i.test(out)) out = `${out} — Gluten Free`;
+  }
+
+  return out.trim();
+}
+
+function escapeRegExp(v: string) {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function capitalize(v: string) {
+  if (!v) return v;
+  return v.charAt(0).toUpperCase() + v.slice(1);
 }
 
 /* =========================================================
@@ -213,11 +423,13 @@ export default function ReceiptScanTool({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
+  const [notice, setNotice] = useState<string>("");
 
   useEffect(() => {
     if (!forcedMode) return;
     setMode(forcedMode);
     setError("");
+    setNotice("");
   }, [forcedMode]);
 
   useEffect(() => {
@@ -273,6 +485,7 @@ export default function ReceiptScanTool({
 
   function clearAll() {
     setError("");
+    setNotice("");
     setRows([]);
     setTypeText("");
     setPasteText("");
@@ -335,9 +548,9 @@ export default function ReceiptScanTool({
     if (list.length > 0) {
       const first = list[0];
       const loc = safeString((first as any)?.location) || "Somewhere";
-      label = `${loc}${
-        typeof (first as any)?.quantity === "number" ? ` • ${(first as any).quantity}` : ""
-      }${safeString((first as any)?.unit) ? ` ${(first as any).unit}` : ""}`;
+      label = `${loc}${typeof (first as any)?.quantity === "number" ? ` • ${(first as any).quantity}` : ""}${
+        safeString((first as any)?.unit) ? ` ${(first as any).unit}` : ""
+      }`;
     }
 
     if (list.length > 0 && unit) {
@@ -404,6 +617,7 @@ export default function ReceiptScanTool({
   async function runParse() {
     setBusy(true);
     setError("");
+    setNotice("");
 
     try {
       let data: ReceiptParseResponse | null = null;
@@ -426,8 +640,7 @@ export default function ReceiptScanTool({
 
         if (!res.ok) {
           const msg =
-            data?.error ||
-            `Receipt parse failed (${res.status} ${res.statusText || "error"})`;
+            data?.error || `Receipt parse failed (${res.status} ${res.statusText || "error"})`;
           throw new Error(msg);
         }
       }
@@ -447,13 +660,20 @@ export default function ReceiptScanTool({
 
         if (!res.ok) {
           const msg =
-            data?.error ||
-            `Receipt parse failed (${res.status} ${res.statusText || "error"})`;
+            data?.error || `Receipt parse failed (${res.status} ${res.statusText || "error"})`;
           throw new Error(msg);
         }
       }
 
       const items = Array.isArray(data?.items) ? (data!.items as ParsedReceiptItem[]) : [];
+
+      if (items.length === 0) {
+        const msg = typeof data?.message === "string" ? data.message.trim() : "";
+        if (msg) setNotice(msg);
+        setRows([]);
+        return;
+      }
+
       const storedOn = todayYMD();
 
       const baseRows: ReceiptRow[] = items
@@ -509,6 +729,7 @@ export default function ReceiptScanTool({
 
     setBusy(true);
     setError("");
+    setNotice("");
 
     try {
       const results = await Promise.all(
@@ -590,17 +811,9 @@ export default function ReceiptScanTool({
 
   return (
     <div className="text-white">
-      {!embedded ? (
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <div className="text-3xl font-extrabold tracking-tight">Receipt</div>
-            <div className="mt-2 text-white/70">
-              Type items, paste receipt text, or upload a file. Review first. Add only what you want.
-            </div>
-            {loadingStorage ? (
-              <div className="mt-2 text-xs text-white/50">Loading storage for match previews…</div>
-            ) : null}
-          </div>
+      {notice ? (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+          {notice}
         </div>
       ) : null}
 
@@ -668,6 +881,7 @@ export default function ReceiptScanTool({
                 return;
               }
               setError("");
+              setNotice("");
               buildRowsFromSimpleLines(typeText);
               return;
             }
@@ -684,19 +898,6 @@ export default function ReceiptScanTool({
 
       {rows.length > 0 ? (
         <div className="mt-6">
-          {duplicateSummary.groupCount > 0 ? (
-            <div className="mb-4 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-              <div className="font-semibold text-white/90">Possible duplicates</div>
-              <div className="mt-1 text-sm text-white/60">
-                {duplicateSummary.groupCount} group{duplicateSummary.groupCount === 1 ? "" : "s"} found
-                {duplicateSummary.extraCount > 0
-                  ? ` (${duplicateSummary.extraCount} extra line${duplicateSummary.extraCount === 1 ? "" : "s"})`
-                  : ""}
-                . No automatic merging.
-              </div>
-            </div>
-          ) : null}
-
           <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="text-sm text-white/70">
               {checkedCount} selected • {rows.length} total
@@ -720,8 +921,74 @@ export default function ReceiptScanTool({
             </div>
           </div>
 
-          <div className="text-xs text-white/55">
-            Duplicates are highlighted for visibility only — no automatic merging or quantity changes.
+          <div className="mt-4 grid gap-3">
+            {rows.map((r) => {
+              const isDup = Boolean(r.dupGroupKey);
+
+              return (
+                <div
+                  key={r.id}
+                  className={`rounded-3xl ring-1 p-4 ${
+                    isDup ? "bg-fuchsia-500/10 ring-fuchsia-400/25" : "bg-white/5 ring-white/10"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <label className="mt-1 flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={r.checked}
+                          onChange={() => setRow(r.id, { checked: !r.checked })}
+                          className="h-4 w-4 accent-fuchsia-500"
+                        />
+                      </label>
+
+                      <div className="min-w-0">
+                        <input
+                          value={r.name}
+                          onChange={(e) => setRow(r.id, { name: e.target.value })}
+                          className="w-[520px] max-w-[80vw] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                        />
+                        {r.matchLabel ? (
+                          <div className="mt-1 text-xs text-white/45">
+                            Match: <span className="text-white/65">{r.matchLabel}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="number"
+                        min={1}
+                        value={r.quantity}
+                        onChange={(e) => setRow(r.id, { quantity: coerceQty(e.target.value, 1) })}
+                        className="w-[90px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                      />
+
+                      <select
+                        value={r.location ?? "Pantry"}
+                        onChange={(e) => setRow(r.id, { location: e.target.value as Location })}
+                        className="w-[160px] rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                      >
+                        <option value="Pantry">Pantry</option>
+                        <option value="Fridge">Fridge</option>
+                        <option value="Freezer">Freezer</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <input
+                      value={r.notes}
+                      onChange={(e) => setRow(r.id, { notes: e.target.value })}
+                      placeholder="Optional notes (e.g., theirs, keep separate, etc.)"
+                      className="w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : null}

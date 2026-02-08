@@ -96,6 +96,32 @@ function extractInstructionsFromRecipe(r: Recipe): string[] {
   return toStringArray(r.instructions ?? r.steps);
 }
 
+/**
+ * UI helper: build a tooltip string for close matches
+ * (up to 3 pairs; quiet, informational)
+ */
+function buildCloseMatchTitle(details: Array<any>) {
+  const soft = (details || []).filter((d) => d?.isSoftMatch && d?.matched);
+
+  if (soft.length === 0) return "";
+
+  const lines = soft.slice(0, 3).map((d) => {
+    const ing = String(d?.ingredient ?? "").trim();
+    const match = String(d?.matchedStorageRawName ?? "").trim();
+    const kind = String(d?.matchKind ?? "").trim();
+
+    if (!ing || !match) return "";
+    const kindLabel = kind === "containment" || kind === "token" ? "similar" : kind || "similar";
+    return `${ing} → ${match} (${kindLabel})`;
+  });
+
+  const shown = lines.filter(Boolean);
+  if (shown.length === 0) return "";
+
+  const remaining = soft.length - shown.length;
+  return remaining > 0 ? `${shown.join("\n")}\n+${remaining} more` : shown.join("\n");
+}
+
 export default function RecipesPage() {
   const [tab, setTab] = useState<Tab>("mine");
 
@@ -153,7 +179,6 @@ export default function RecipesPage() {
     }
 
     loadRecipes();
-
     return () => {
       alive = false;
     };
@@ -182,7 +207,6 @@ export default function RecipesPage() {
     }
 
     loadStorage();
-
     return () => {
       alive = false;
     };
@@ -203,6 +227,8 @@ export default function RecipesPage() {
           haveCount: number;
           missing: string[];
           allInStock: boolean;
+          softHaveCount?: number;
+          details?: Array<any>;
         };
       }
     >();
@@ -222,15 +248,17 @@ export default function RecipesPage() {
         .join(" ")
         .toLowerCase();
 
-      let summary = {
+      let summary: any = {
         total: ingredients.length,
         haveCount: 0,
         missing: ingredients,
         allInStock: false,
+        softHaveCount: 0,
+        details: [],
       };
 
       if (!loadingStorage && !storageError && ingredients.length > 0) {
-        summary = summarizeIngredients(ingredients, storageIndex);
+        summary = summarizeIngredients(ingredients, storageIndex) as any;
       }
 
       map.set(r.id, { tags, ingredients, instructions, searchBlob, summary });
@@ -268,9 +296,7 @@ export default function RecipesPage() {
   async function toggleFavorite(recipe: Recipe) {
     const prev = Boolean(recipe.favorite);
 
-    setRecipes((all) =>
-      all.map((r) => (r.id === recipe.id ? { ...r, favorite: !prev } : r))
-    );
+    setRecipes((all) => all.map((r) => (r.id === recipe.id ? { ...r, favorite: !prev } : r)));
 
     const res = await fetch(`/api/recipes/${recipe.id}`, {
       method: "PATCH",
@@ -279,9 +305,7 @@ export default function RecipesPage() {
     });
 
     if (!res.ok) {
-      setRecipes((all) =>
-        all.map((r) => (r.id === recipe.id ? { ...r, favorite: prev } : r))
-      );
+      setRecipes((all) => all.map((r) => (r.id === recipe.id ? { ...r, favorite: prev } : r)));
       alert("Could not update favorite.");
     }
   }
@@ -339,9 +363,7 @@ export default function RecipesPage() {
     if (source_url) qp.set("source_url", source_url);
     if (source_name) qp.set("source_name", source_name);
 
-    window.location.href = qp.toString()
-      ? `/recipes/add/manual?${qp.toString()}`
-      : `/recipes/add/manual`;
+    window.location.href = qp.toString() ? `/recipes/add/manual?${qp.toString()}` : `/recipes/add/manual`;
   }
 
   return (
@@ -363,19 +385,13 @@ export default function RecipesPage() {
         ]}
       >
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setTab("mine")}
-            className={tab === "mine" ? tabPillActive : tabPill}
-          >
+          <button type="button" onClick={() => setTab("mine")} className={tab === "mine" ? tabPillActive : tabPill}>
             <span className="text-lg">📚</span>
             <span className="flex flex-col items-start leading-tight">
               <span>My Recipes</span>
               <span
                 className={
-                  tab === "mine"
-                    ? "text-black/80 text-[11px] font-semibold"
-                    : "text-white/60 text-[11px] font-semibold"
+                  tab === "mine" ? "text-black/80 text-[11px] font-semibold" : "text-white/60 text-[11px] font-semibold"
                 }
               >
                 The usual suspects.
@@ -410,7 +426,6 @@ export default function RecipesPage() {
         </div>
       </PageHero>
 
-      {/* --- rest of your page remains unchanged --- */}
       <div className="max-w-6xl mx-auto px-4 py-10">
         {tab === "mine" ? (
           <>
@@ -424,9 +439,7 @@ export default function RecipesPage() {
                     placeholder="Search by ingredient, mood, or vague intention…"
                     className="w-[320px] max-w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
-                  <div className="text-xs text-white/45">
-                    Searches titles, ingredients, and instructions. No judgment.
-                  </div>
+                  <div className="text-xs text-white/45">Searches titles, ingredients, and instructions. No judgment.</div>
                 </div>
 
                 <select
@@ -440,12 +453,7 @@ export default function RecipesPage() {
                   <option value="za">Z → A</option>
                 </select>
 
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
-                  title="Reset filters"
-                >
+                <button type="button" onClick={resetFilters} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3" title="Reset filters">
                   Reset
                 </button>
               </div>
@@ -477,11 +485,7 @@ export default function RecipesPage() {
                     <div className="text-xs text-white/55 pl-6">Pantry’s got this.</div>
                   ) : null}
 
-                  {storageError ? (
-                    <div className="text-xs text-white/40 pl-6">
-                      (Needs Pantry &amp; Freezer loaded)
-                    </div>
-                  ) : null}
+                  {storageError ? <div className="text-xs text-white/40 pl-6">(Needs Pantry &amp; Freezer loaded)</div> : null}
                 </div>
               </div>
             </div>
@@ -490,15 +494,11 @@ export default function RecipesPage() {
               {loadingRecipes ? (
                 <div className="text-white/70">Loading…</div>
               ) : recipesError ? (
-                <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
-                  {recipesError}
-                </div>
+                <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{recipesError}</div>
               ) : filtered.length === 0 ? (
                 <div className="text-white/55">
                   <div className="font-semibold text-white/70">No matches.</div>
-                  <div className="mt-1 text-sm text-white/50">
-                    Try fewer words or a different vibe.
-                  </div>
+                  <div className="mt-1 text-sm text-white/50">Try fewer words or a different vibe.</div>
                 </div>
               ) : (
                 <div className="grid gap-6 sm:grid-cols-2">
@@ -507,15 +507,16 @@ export default function RecipesPage() {
                     const tags = meta?.tags ?? [];
                     const serves = r.serves ?? r.servings ?? null;
 
-                    const summary = meta?.summary ?? {
+                    const summary: any = meta?.summary ?? {
                       total: 0,
                       haveCount: 0,
                       missing: [] as string[],
                       allInStock: false,
+                      softHaveCount: 0,
+                      details: [],
                     };
 
-                    const showStorageBits =
-                      !loadingStorage && !storageError && summary.total > 0;
+                    const showStorageBits = !loadingStorage && !storageError && summary.total > 0;
 
                     let inventoryClass = "text-white/70 font-normal";
                     let inventoryToneState: "good" | "some" | "low" = "low";
@@ -537,11 +538,11 @@ export default function RecipesPage() {
                           : "text-orange-400 font-normal";
                     }
 
+                    const softHaveCount = Math.max(0, Number(summary.softHaveCount) || 0);
+                    const closeTitle = buildCloseMatchTitle(summary.details || []);
+
                     return (
-                      <div
-                        key={r.id}
-                        className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10"
-                      >
+                      <div key={r.id} className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -557,37 +558,22 @@ export default function RecipesPage() {
                         </button>
 
                         <Link href={`/recipes/${r.id}`} className="block">
-                          <h2 className="text-4xl font-extrabold tracking-tight pr-10">
-                            {r.title}
-                          </h2>
+                          <h2 className="text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
 
-                          {r.description ? (
-                            <p className="mt-2 text-white/70 line-clamp-2">
-                              {r.description}
-                            </p>
-                          ) : null}
+                          {r.description ? <p className="mt-2 text-white/70 line-clamp-2">{r.description}</p> : null}
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             {serves != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
-                                Serves {serves}
-                              </span>
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Serves {serves}</span>
                             ) : null}
                             {r.prep_minutes != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
-                                Prep {r.prep_minutes}m
-                              </span>
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Prep {r.prep_minutes}m</span>
                             ) : null}
                             {r.cook_minutes != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
-                                Cook {r.cook_minutes}m
-                              </span>
+                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Cook {r.cook_minutes}m</span>
                             ) : null}
                             {tags.slice(0, 3).map((t) => (
-                              <span
-                                key={t}
-                                className="rounded-full bg-white/10 px-3 py-1 text-sm"
-                              >
+                              <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
                                 {t}
                               </span>
                             ))}
@@ -596,16 +582,18 @@ export default function RecipesPage() {
                           {showStorageBits ? (
                             <div className={`mt-4 text-sm ${inventoryClass}`}>
                               Have{" "}
-                              <span
-                                className={
-                                  inventoryToneState === "good"
-                                    ? "font-semibold"
-                                    : "font-medium"
-                                }
-                              >
+                              <span className={inventoryToneState === "good" ? "font-semibold" : "font-medium"}>
                                 {summary.haveCount}/{summary.total}
                               </span>{" "}
                               in Pantry &amp; Freezer
+                              {softHaveCount > 0 ? (
+                                <span
+                                  className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75 ring-1 ring-white/10"
+                                  title={closeTitle || `${softHaveCount} similar match(es)`}
+                                >
+                                  ≈ Similar {softHaveCount}
+                                </span>
+                              ) : null}
                             </div>
                           ) : null}
                         </Link>
@@ -613,9 +601,7 @@ export default function RecipesPage() {
                         <div className="mt-6 flex items-center gap-3 flex-wrap">
                           <button
                             type="button"
-                            onClick={() =>
-                              (window.location.href = `/recipes/${r.id}/edit`)
-                            }
+                            onClick={() => (window.location.href = `/recipes/${r.id}/edit`)}
                             className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
                           >
                             Edit
@@ -672,12 +658,8 @@ export default function RecipesPage() {
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">
-                    Never suggest (comma-separated)
-                  </div>
-                  <div className="mt-2 text-xs text-white/60">
-                    Example: kale, chickpeas, capers, alfredo, sausage
-                  </div>
+                  <div className="text-sm font-bold text-white/90">Never suggest (comma-separated)</div>
+                  <div className="mt-2 text-xs text-white/60">Example: kale, chickpeas, capers, alfredo, sausage</div>
 
                   <input
                     value={avoidRaw}
@@ -690,24 +672,15 @@ export default function RecipesPage() {
                 </div>
 
                 <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">
-                    What it’s learning right now
-                  </div>
-                  <div className="mt-2 text-xs text-white/60">
-                    We rank suggestions using your recipe tags + favorites.
-                  </div>
+                  <div className="text-sm font-bold text-white/90">What it’s learning right now</div>
+                  <div className="mt-2 text-xs text-white/60">We rank suggestions using your recipe tags + favorites.</div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     {suggested.preferredTags.length === 0 ? (
-                      <span className="text-white/60 text-sm">
-                        Add some tags/favorites to improve recommendations.
-                      </span>
+                      <span className="text-white/60 text-sm">Add some tags/favorites to improve recommendations.</span>
                     ) : (
                       suggested.preferredTags.map((t) => (
-                        <span
-                          key={t}
-                          className="rounded-full bg-white/10 px-3 py-1 text-sm"
-                        >
+                        <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
                           {t}
                         </span>
                       ))
@@ -719,23 +692,13 @@ export default function RecipesPage() {
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
               {suggested.suggestions.map((s: any) => (
-                <div
-                  key={s.id}
-                  className="rounded-3xl bg-white/5 p-7 ring-1 ring-white/10"
-                >
-                  <div className="text-3xl font-extrabold tracking-tight">
-                    {s.title}
-                  </div>
-                  {s.description ? (
-                    <div className="mt-2 text-white/70">{s.description}</div>
-                  ) : null}
+                <div key={s.id} className="rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
+                  <div className="text-3xl font-extrabold tracking-tight">{s.title}</div>
+                  {s.description ? <div className="mt-2 text-white/70">{s.description}</div> : null}
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {(s.tags || []).slice(0, 4).map((t: string) => (
-                      <span
-                        key={t}
-                        className="rounded-full bg-white/10 px-3 py-1 text-sm"
-                      >
+                      <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
                         {t}
                       </span>
                     ))}
@@ -743,9 +706,7 @@ export default function RecipesPage() {
 
                   <div className="mt-5 text-white/60 text-sm">
                     Ingredients (keywords):{" "}
-                    <span className="text-white/75">
-                      {(s.ingredients || []).slice(0, 6).join(", ")}
-                    </span>
+                    <span className="text-white/75">{(s.ingredients || []).slice(0, 6).join(", ")}</span>
                   </div>
 
                   <div className="mt-6 flex items-center gap-3">
@@ -771,11 +732,7 @@ export default function RecipesPage() {
                     )}
                   </div>
 
-                  {s.source_name ? (
-                    <div className="mt-3 text-xs text-white/40">
-                      Source: {s.source_name}
-                    </div>
-                  ) : null}
+                  {s.source_name ? <div className="mt-3 text-xs text-white/40">Source: {s.source_name}</div> : null}
                 </div>
               ))}
             </div>
