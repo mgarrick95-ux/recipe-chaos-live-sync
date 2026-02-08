@@ -4,9 +4,17 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type PlanSlot = {
   slotId: string;
-  recipeId: string | null;
+
+  // canonical internal keys
+  mainId: string | null;
+  sideId: string | null;
+
   locked: boolean;
-  sideRecipeId: string | null;
+  cooked: boolean;
+
+  // backward compat keys (kept for older code paths)
+  recipeId?: string | null;
+  sideRecipeId?: string | null;
 };
 
 function startOfWeekMonday(d: Date) {
@@ -33,27 +41,57 @@ function coerceSlots(value: any, fallbackCount = 7): PlanSlot[] {
     const arr = value as (string | null)[];
     return arr.map((rid, i) => ({
       slotId: `slot-${i}-${Date.now()}`,
-      recipeId: rid ?? null,
+      mainId: rid ?? null,
+      sideId: null,
       locked: false,
+      cooked: false,
+      recipeId: rid ?? null,
       sideRecipeId: null,
     }));
   }
 
-  // New format: PlanSlot[]
+  // New-ish: array of objects
   if (Array.isArray(value) && value.every((v) => v && typeof v === "object")) {
-    return (value as any[]).map((s, i) => ({
-      slotId: String(s.slotId ?? `slot-${i}-${Date.now()}`),
-      recipeId: s.recipeId ? String(s.recipeId) : null,
-      locked: Boolean(s.locked),
-      sideRecipeId: s.sideRecipeId ? String(s.sideRecipeId) : null,
-    }));
+    return (value as any[]).map((s, i) => {
+      const slotId = String(s.slotId ?? `slot-${i}-${Date.now()}`);
+
+      // accept either naming
+      const mainId =
+        s.mainId != null ? String(s.mainId) :
+        s.recipeId != null ? String(s.recipeId) :
+        s.main_id != null ? String(s.main_id) :
+        null;
+
+      const sideId =
+        s.sideId != null ? String(s.sideId) :
+        s.sideRecipeId != null ? String(s.sideRecipeId) :
+        s.side_id != null ? String(s.side_id) :
+        null;
+
+      const locked = Boolean(s.locked);
+      const cooked = Boolean(s.cooked);
+
+      // store both key sets for maximum compatibility
+      return {
+        slotId,
+        mainId,
+        sideId,
+        locked,
+        cooked,
+        recipeId: mainId,
+        sideRecipeId: sideId,
+      };
+    });
   }
 
   // Default empty slots
   return Array.from({ length: fallbackCount }).map((_, i) => ({
     slotId: `slot-${i}-${Date.now()}`,
-    recipeId: null,
+    mainId: null,
+    sideId: null,
     locked: false,
+    cooked: false,
+    recipeId: null,
     sideRecipeId: null,
   }));
 }
@@ -76,9 +114,9 @@ export async function GET() {
     if (selErr) throw selErr;
 
     if (existing) {
-      // Ensure slots exist
       const meal_count = Number(existing.meal_count ?? 7);
       const slots = coerceSlots(existing.selected_recipe_ids, meal_count);
+
       return NextResponse.json({
         ok: true,
         plan: { ...existing, meal_count, selected_recipe_ids: slots },

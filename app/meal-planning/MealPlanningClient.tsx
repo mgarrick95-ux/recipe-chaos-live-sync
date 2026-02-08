@@ -18,15 +18,17 @@ type Recipe = {
   title: string;
   favorite?: boolean | null;
   tags?: any;
-  ingredients?: any;
+  ingredients?: any; // usually string[]
   steps?: any;
+
+  ai_profile?: any; // jsonb
+  user_profile?: any; // jsonb
 };
 
 type SlotPlan = {
   slotId: string;
   mainId: string | null;
   sideId: string | null;
-  sideHint?: string | null; // NEW: fallback suggestion when no side recipe fits
   locked: boolean;
   cooked: boolean;
 };
@@ -61,17 +63,21 @@ type Profile = {
   course: Course;
   cuisines: Set<string>;
   vibes: Set<string>;
-  sweetness: number;
-  heaviness: number;
-  confidence: number;
-  flags: {
-    hasExplicitCourseTag: boolean;
-    explicitCourse: Course | null;
-    conflict: boolean;
-    blockedForAutopick: boolean;
-    blockedForSideAutopick: boolean;
-  };
+  sweetness: number; // 0..1
+  heaviness: number; // 0..1
+  confidence: number; // 0..1
 };
+
+type AICourse =
+  | "main"
+  | "side"
+  | "breakfast"
+  | "dessert"
+  | "snack"
+  | "sauce"
+  | "component"
+  | "drink"
+  | "unknown";
 
 /* =========================
    Date helpers
@@ -87,7 +93,7 @@ function toISODate(d: Date) {
 function startOfWeekMonday(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
+  const day = d.getDay(); // 0=Sun..6=Sat
   const diff = (day + 6) % 7;
   d.setDate(d.getDate() - diff);
   return d;
@@ -151,7 +157,6 @@ function makeEmptySlots(count: number): SlotPlan[] {
     slotId: uid(),
     mainId: null,
     sideId: null,
-    sideHint: null,
     locked: false,
     cooked: false,
   }));
@@ -167,56 +172,93 @@ function coerceNumber(v: any, fallback = 0) {
 }
 
 /* =========================
-   Guardrail heuristics
+   Course helpers (AI/user)
+========================= */
+
+function readProfileCourseForUI(recipe: Recipe): { course: AICourse | null; source: "user" | "ai" | "none" } {
+  const userCourse = (recipe as any)?.user_profile?.course;
+  if (typeof userCourse === "string" && userCourse) return { course: userCourse as AICourse, source: "user" };
+
+  const aiCourse = (recipe as any)?.ai_profile?.course;
+  if (typeof aiCourse === "string" && aiCourse) return { course: aiCourse as AICourse, source: "ai" };
+
+  return { course: null, source: "none" };
+}
+
+// Effective course for behavior: user -> ai -> heuristic -> null
+function effectiveCourseForPick(recipe: Recipe, fallbackHeuristic?: Course): AICourse | Course | null {
+  const raw =
+    (recipe as any)?.user_profile?.course ??
+    (recipe as any)?.ai_profile?.course ??
+    fallbackHeuristic ??
+    null;
+
+  return typeof raw === "string" ? (raw.toLowerCase().trim() as any) : null;
+}
+
+function isNonMealCourse(c: any) {
+  return c === "sauce" || c === "component" || c === "drink";
+}
+
+function isMealMainCourse(c: any) {
+  return c === "main" || c === "breakfast";
+}
+
+/* =========================
+   Heuristic profiler (local)
 ========================= */
 
 const KW = {
-  dessert: ["cookie", "cookies", "cake", "brownie", "cupcake", "muffin", "pie", "tart", "ice cream", "pudding", "candy", "fudge", "chocolate", "cheesecake", "frosting", "icing", "donut", "doughnut", "sweet"],
-  breakfast: ["waffle", "waffles", "pancake", "pancakes", "omelet", "omelette", "scramble", "scrambled", "french toast", "granola", "oatmeal", "cereal", "breakfast", "bagel", "yogurt", "parfait", "hashbrown", "hash browns"],
-  side: ["side", "salad", "slaw", "fries", "chips", "salsa", "guacamole", "dip", "bread", "rolls", "garlic bread", "rice", "pilaf", "mashed", "roasted", "steamed", "sauteed", "carrots", "green beans", "asparagus", "broccoli", "cucumber", "coleslaw", "potato", "potatoes"],
-  snack: ["snack", "appetizer", "starter", "bite", "bites"],
-  soup: ["soup", "stew", "chowder", "bisque", "ramen", "pho", "chili"],
-  sandwich: ["sandwich", "panini", "wrap", "taco", "quesadilla", "burger", "sub", "grilled cheese"],
-  pasta: ["pasta", "spaghetti", "lasagna", "ravioli", "alfredo", "mac and cheese", "macaroni"],
-  italian: ["italian", "parmesan", "marinara", "bolognese", "pesto", "lasagna", "risotto"],
-  mexican: ["taco", "tacos", "burrito", "enchilada", "quesadilla", "salsa", "guac", "guacamole"],
-  asian: ["stir fry", "stir-fry", "teriyaki", "soy", "miso", "ramen", "curry", "kimchi", "sesame"],
-  seafood: ["salmon", "tuna", "shrimp", "cod", "tilapia", "crab", "lobster"],
-  grill: ["grilled", "bbq", "barbecue", "smoked", "char"],
-  salad: ["salad", "slaw"],
+  dessert: [
+    "cookie","cookies","cake","brownie","cupcake","muffin","pie","tart","ice cream","pudding","candy","fudge",
+    "chocolate","cheesecake","frosting","icing","donut","doughnut","sweet",
+  ],
+  breakfast: [
+    "waffle","waffles","pancake","pancakes","omelet","omelette","scramble","scrambled","french toast","granola",
+    "oatmeal","cereal","breakfast","bagel","hashbrown","hash browns",
+  ],
+  side: [
+    "side","salad","slaw","fries","chips","bread","rolls","garlic bread","rice","pilaf","mashed","roasted","steamed",
+    "sauteed","carrots","green beans","asparagus","broccoli","cucumber","coleslaw","cornbread","breadsticks","toast",
+    "noodles","vegetables","veggies","beans",
+  ],
+  snack: ["snack","appetizer","starter","bite","bites"],
+  soup: ["soup","stew","chowder","bisque","ramen","pho","chili"],
+  sandwich: ["sandwich","panini","wrap","taco","quesadilla","burger","sub","grilled cheese"],
+  pasta: ["pasta","spaghetti","lasagna","ravioli","alfredo","mac and cheese","macaroni"],
+  italian: ["italian","parmesan","marinara","bolognese","pesto","lasagna","risotto"],
+  mexican: ["taco","tacos","burrito","enchilada","quesadilla","salsa","guac","guacamole"],
+  asian: ["stir fry","stir-fry","teriyaki","soy","miso","ramen","curry","kimchi","sesame"],
+  seafood: ["salmon","tuna","shrimp","cod","tilapia","crab","lobster"],
+  grill: ["grilled","bbq","barbecue","smoked","char"],
+  salad: ["salad","slaw"],
 };
 
-// Conservative “main-ish” blockers for side auto-pick
-const MAINISH = {
-  proteins: ["chicken", "beef", "pork", "turkey", "steak", "sausage", "ham", "salmon", "shrimp", "tuna", "cod", "tilapia"],
-  entreeWords: ["parmesan", "meatloaf", "casserole", "lasagna", "alfredo", "bolognese", "stir fry", "stir-fry", "enchilada", "burger", "pizza", "chili"],
-};
+const HARD_MAIN_SIGNALS = [
+  "taco","tacos","burrito","enchilada","burger","sandwich","wrap","quesadilla","sub","panini","grilled cheese",
+  "chili","stew","lasagna","spaghetti","pasta","meatloaf","casserole","fajita","fajitas",
+];
 
-// Hard breakfast tokens (override tags)
-const BREAKFAST_HARD = ["pancake", "pancakes", "waffle", "waffles", "french toast", "omelet", "omelette", "scramble", "scrambled", "oatmeal", "granola", "bagel"];
+// “likely side” keywords (even if AI didn’t label it side yet)
+const LIKELY_SIDE_KEYWORDS = [
+  "salad","slaw","fries","chips","rice","pilaf","mashed","potatoes","roasted","steamed","sauteed","carrots",
+  "green beans","asparagus","broccoli","cucumber","corn","cornbread","bread","rolls","garlic bread","toast",
+  "noodles","vegetables","veggies","beans",
+];
+
+// explicit “not a side” keywords (hard-block even if mistakenly tagged side)
+const NOT_SIDE_KEYWORDS = [
+  "butter","mayo","mayonnaise","dressing","vinaigrette","aioli","sauce","marinara","alfredo","pesto","gravy",
+  "ketchup","mustard","relish","seasoning","rub","spice mix","brine","marinade",
+];
+
+const BREAKFAST_SIDE_KEYWORDS = [
+  "fruit","yogurt","toast","bagel","hashbrown","hash browns","bacon","sausage",
+];
 
 function titleTokens(recipe: Recipe) {
   const tt = normalizeName(recipe.title || "");
   return new Set(tt.split(" ").filter(Boolean));
-}
-
-function intersects(a: Set<string>, b: Set<string>) {
-  for (const x of a) if (b.has(x)) return true;
-  return false;
-}
-
-function resolveExplicitCourseFromTags(tagList: string[]): Course | null {
-  const tags = new Set(tagList.map(normalizeName));
-  const courseTags: Course[] = [];
-  if (tags.has("main")) courseTags.push("main");
-  if (tags.has("side")) courseTags.push("side");
-  if (tags.has("breakfast")) courseTags.push("breakfast");
-  if (tags.has("dessert")) courseTags.push("dessert");
-  if (tags.has("snack")) courseTags.push("snack");
-
-  if (courseTags.length === 1) return courseTags[0];
-  if (courseTags.length > 1) return "unknown";
-  return null;
 }
 
 function profileRecipe(recipe: Recipe): Profile {
@@ -225,64 +267,37 @@ function profileRecipe(recipe: Recipe): Profile {
   const ing = safeStringArray(recipe.ingredients).map(normalizeName);
   const tagList = safeStringArray(recipe.tags).map(normalizeName);
 
-  const text = [title, ...ing, ...tagList].join(" ");
+  const has = (list: string[]) =>
+    list.some((k) => title.includes(k) || ing.some((i) => i.includes(k)) || tagList.some((t) => t.includes(k)));
 
-  const has = (list: string[]) => list.some((k) => text.includes(k));
+  let course: Course = "unknown";
+  let confidence = 0.35;
 
-  // Heuristic detection
   const dessertHit = has(KW.dessert);
   const breakfastHit = has(KW.breakfast);
   const sideHit = has(KW.side);
   const snackHit = has(KW.snack);
 
-  const sweetIngSignals = ["sugar", "brown sugar", "honey", "maple", "vanilla", "cocoa", "chocolate"];
-  const sweetHits = sweetIngSignals.reduce((a, k) => a + (text.includes(k) ? 1 : 0), 0);
-
-  let heuristicCourse: Course = "unknown";
-  let heuristicConfidence = 0.35;
+  const sweetIngSignals = ["sugar","brown sugar","honey","maple","vanilla","cocoa","chocolate"];
+  const sweetHits = sweetIngSignals.reduce((a, k) => a + (ing.some((i) => i.includes(k)) ? 1 : 0), 0);
 
   if (dessertHit || sweetHits >= 2) {
-    heuristicCourse = "dessert";
-    heuristicConfidence = 0.9;
+    course = "dessert";
+    confidence = 0.9;
   } else if (breakfastHit) {
-    heuristicCourse = "breakfast";
-    heuristicConfidence = 0.87;
+    course = "breakfast";
+    confidence = 0.88;
   } else if (snackHit) {
-    heuristicCourse = "snack";
-    heuristicConfidence = 0.75;
+    course = "snack";
+    confidence = 0.75;
   } else if (sideHit) {
-    heuristicCourse = "side";
-    heuristicConfidence = 0.7;
+    course = "side";
+    confidence = 0.7;
   } else {
-    heuristicCourse = "main";
-    heuristicConfidence = 0.55;
+    course = "main";
+    confidence = 0.58;
   }
 
-  // HARD: Breakfast override (pancakes should never become dessert because someone tagged it wrong)
-  if (BREAKFAST_HARD.some((k) => title.includes(k) || text.includes(k))) {
-    heuristicCourse = "breakfast";
-    heuristicConfidence = Math.max(heuristicConfidence, 0.9);
-  }
-
-  // Extra hard signals
-  if (title.includes("fries")) {
-    heuristicCourse = "side";
-    heuristicConfidence = 0.95;
-  }
-  if (title.includes("cookie")) {
-    heuristicCourse = "dessert";
-    heuristicConfidence = 0.95;
-  }
-  if (title.includes("grilled cheese")) {
-    heuristicCourse = "main";
-    heuristicConfidence = Math.max(heuristicConfidence, 0.8);
-  }
-
-  // Explicit tags
-  const explicitCourse = resolveExplicitCourseFromTags(tagList);
-  const hasExplicitCourseTag = explicitCourse !== null;
-
-  // cuisines/vibes
   const cuisines = new Set<string>();
   const vibes = new Set<string>();
 
@@ -296,210 +311,142 @@ function profileRecipe(recipe: Recipe): Profile {
   if (has(KW.salad)) vibes.add("salad");
   if (has(KW.seafood)) vibes.add("seafood");
   if (has(KW.grill)) vibes.add("grill");
-  if (text.includes("fried") || title.includes("fries")) vibes.add("fried");
 
-  const heavySignals = ["cream", "cheese", "butter", "fried", "lasagna", "alfredo", "casserole", "chili"];
-  const lightSignals = ["salad", "cucumber", "vinaigrette", "broccoli", "steam", "grilled", "lemon", "herb"];
+  const heavySignals = ["cream","cheese","butter","bacon","fried","lasagna","alfredo","casserole","chili"];
+  const lightSignals = ["salad","cucumber","vinaigrette","broccoli","steam","grilled","lemon","herb"];
 
-  const heavy = heavySignals.reduce((a, k) => a + (text.includes(k) ? 1 : 0), 0);
-  const light = lightSignals.reduce((a, k) => a + (text.includes(k) ? 1 : 0), 0);
+  const heavy = heavySignals.reduce((a, k) => a + (title.includes(k) || ing.some((i) => i.includes(k)) ? 1 : 0), 0);
+  const light = lightSignals.reduce((a, k) => a + (title.includes(k) || ing.some((i) => i.includes(k)) ? 1 : 0), 0);
 
   const heaviness = Math.max(0, Math.min(1, (heavy - light + 2) / 6));
   const sweetness = Math.max(0, Math.min(1, (sweetHits + (dessertHit ? 2 : 0)) / 5));
 
-  // Short-title dampener
-  const shortBad = toks.size <= 2 && heuristicCourse === "main";
-  if (shortBad) heuristicConfidence = Math.min(heuristicConfidence, 0.48);
+  const shortBad = toks.size <= 2 && !dessertHit && !breakfastHit && !sideHit;
+  if (shortBad) confidence = Math.min(confidence, 0.48);
 
-  // Reconcile
-  let course: Course = heuristicCourse;
-  let confidence = heuristicConfidence;
-  let conflict = false;
-  let blockedForAutopick = false;
-
-  if (hasExplicitCourseTag && explicitCourse) {
-    if (explicitCourse === "unknown") {
-      conflict = true;
-      course = "unknown";
-      confidence = Math.min(confidence, 0.4);
-      blockedForAutopick = true;
-    } else {
-      // HARD breakfast still wins if explicit tag says dessert
-      if (explicitCourse === "dessert" && heuristicCourse === "breakfast" && heuristicConfidence >= 0.85) {
-        conflict = true;
-        course = "breakfast";
-        confidence = Math.max(confidence, 0.85);
-      } else {
-        course = explicitCourse;
-      }
-    }
+  // guardrails
+  if (title.includes("fries")) {
+    course = "side";
+    confidence = 0.95;
+    vibes.add("fried");
+  }
+  if (title.includes("cookie")) {
+    course = "dessert";
+    confidence = 0.95;
+  }
+  if (title.includes("pancake") || title.includes("waffle")) {
+    course = "breakfast";
+    confidence = Math.max(confidence, 0.9);
   }
 
-  if (course === "unknown") blockedForAutopick = true;
-
-  // Block mains from being auto-picked as sides
-  const proteinHit = MAINISH.proteins.some((k) => text.includes(k));
-  const entreeHit = MAINISH.entreeWords.some((k) => text.includes(k));
-  const mainShapedVibe = vibes.has("pasta") || vibes.has("sandwich") || vibes.has("soup");
-  const clearlySidey =
-    vibes.has("salad") ||
-    title.includes("slaw") ||
-    title.includes("coleslaw") ||
-    title.includes("garlic bread") ||
-    title.includes("roll") ||
-    title.includes("dip") ||
-    title.includes("salsa") ||
-    title.includes("guacamole") ||
-    title.includes("fries");
-
-  const looksMainish = mainShapedVibe || proteinHit || entreeHit || (heuristicCourse === "main" && heuristicConfidence >= 0.6);
-  const blockedForSideAutopick = course === "side" && looksMainish && !clearlySidey;
-
-  return {
-    course,
-    cuisines,
-    vibes,
-    sweetness,
-    heaviness,
-    confidence,
-    flags: {
-      hasExplicitCourseTag,
-      explicitCourse: explicitCourse ?? null,
-      conflict,
-      blockedForAutopick,
-      blockedForSideAutopick,
-    },
-  };
+  return { course, cuisines, vibes, sweetness, heaviness, confidence };
 }
 
-/* =========================
-   Smart fallback side suggestions (strings)
-========================= */
-
-function uniqueStrings(list: string[]) {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const s of list) {
-    const k = normalizeName(s);
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(s);
-  }
-  return out;
+function intersects(a: Set<string>, b: Set<string>) {
+  for (const x of a) if (b.has(x)) return true;
+  return false;
 }
 
-function fallbackSideSuggestionsForMain(main: Profile): string[] {
-  // If you don't have matching side recipes, we still give something sensible.
-  // These are intentionally boring (boring sides are good sides).
-  const base = ["Green salad", "Roasted broccoli", "Steamed green beans", "Rice", "Bread & butter"];
-
-  // Cuisine-ish
-  if (main.cuisines.has("italian") || main.vibes.has("pasta")) {
-    return uniqueStrings([
-      "Garlic bread",
-      "Caesar salad",
-      "Roasted broccoli",
-      "Simple side salad",
-      "Sautéed spinach",
-      ...base,
-    ]);
-  }
-
-  if (main.cuisines.has("mexican")) {
-    return uniqueStrings([
-      "Chips & salsa",
-      "Mexican rice",
-      "Refried beans",
-      "Guacamole",
-      "Simple cabbage slaw",
-      ...base,
-    ]);
-  }
-
-  if (main.cuisines.has("asian")) {
-    return uniqueStrings([
-      "Steamed rice",
-      "Cucumber salad",
-      "Stir-fried broccoli",
-      "Edamame",
-      "Simple slaw",
-      ...base,
-    ]);
-  }
-
-  // Vibe-ish
-  if (main.vibes.has("soup") || main.vibes.has("chili")) {
-    return uniqueStrings(["Garlic toast", "Grilled bread", "Simple side salad", "Crackers", ...base]);
-  }
-
-  if (main.course === "breakfast") {
-    return uniqueStrings([
-      "Fruit",
-      "Toast",
-      "Yogurt",
-      "Bacon or sausage",
-      "Hash browns",
-      "Breakfast potatoes",
-    ]);
-  }
-
-  if (main.heaviness >= 0.65) {
-    return uniqueStrings(["Green salad", "Roasted vegetables", "Steamed broccoli", "Cucumber salad", ...base]);
-  }
-
-  return uniqueStrings(base);
-}
-
-/* =========================
-   Side scoring
-========================= */
-
-function scoreSideForMain(
-  main: Profile,
-  side: Profile,
-  alreadyUsedSideIds: Set<string>,
-  sideId: string,
-  usedSideVibes: { saladCount: number }
-) {
+function scoreSideForMain(main: Profile, side: Profile, alreadyUsedSideIds: Set<string>, sideId: string) {
   if (side.course !== "side") return -999;
-  if (side.flags.blockedForSideAutopick) return -999;
   if (main.course === "dessert" || main.course === "snack") return -999;
 
   let score = 0;
 
-  if (alreadyUsedSideIds.has(sideId)) score -= 3.25;
+  if (alreadyUsedSideIds.has(sideId)) score -= 2.0;
 
   if (main.cuisines.size > 0 && intersects(main.cuisines, side.cuisines)) score += 1.2;
   if (main.cuisines.size > 0 && side.cuisines.size === 0) score += 0.25;
 
   const mainIsSalady = main.vibes.has("salad");
   const sideIsSalady = side.vibes.has("salad");
+  if (mainIsSalady && sideIsSalady) score -= 1.25;
 
-  if (mainIsSalady && sideIsSalady) score -= 2.25;
-
-  if (sideIsSalady && usedSideVibes.saladCount >= 1) score -= 1.25;
-  if (sideIsSalady && usedSideVibes.saladCount >= 2) score -= 2.0;
-
-  if (main.vibes.has("soup") && (side.vibes.has("sandwich") || sideIsSalady)) score += 1.0;
+  if (main.vibes.has("soup") && (side.vibes.has("sandwich") || side.vibes.has("salad"))) score += 1.0;
 
   if (main.vibes.has("pasta") || main.heaviness >= 0.6) {
-    if (sideIsSalady) score += 0.9;
+    if (sideIsSalady) score += 0.95;
     if (side.heaviness <= 0.4) score += 0.55;
-    if (side.heaviness >= 0.65) score -= 1.0;
+    if (side.heaviness >= 0.65) score -= 0.9;
   }
 
-  // Breakfast: avoid dinner-y sides
   if (main.course === "breakfast") {
-    if (side.vibes.has("pasta") || side.vibes.has("soup")) score -= 1.25;
-    if (side.heaviness >= 0.65) score -= 1.1;
-    if (side.vibes.has("fried")) score += 0.2; // hash browns, etc
-    if (sideIsSalady) score -= 0.35;
+    // breakfast sides should be light/simple
+    if (sideIsSalady) score -= 0.9;
+    if (side.vibes.has("fried")) score += 0.15;
+    if (side.heaviness >= 0.7) score -= 1.1;
   }
 
-  score += intersects(main.vibes, side.vibes) ? 0.05 : 0.25;
+  score += intersects(main.vibes, side.vibes) ? 0.1 : 0.35;
   score += (side.confidence - 0.5) * 0.6;
 
   return score;
+}
+
+/* =========================
+   Side sanity filters
+========================= */
+
+function isLikelySideTitle(recipe: Recipe) {
+  const title = normalizeName(recipe.title || "");
+  if (!title) return false;
+
+  if (NOT_SIDE_KEYWORDS.some((k) => title.includes(k))) return false;
+  if (HARD_MAIN_SIGNALS.some((k) => title.includes(k))) return false;
+
+  return LIKELY_SIDE_KEYWORDS.some((k) => title.includes(k));
+}
+
+function isBreakfastFriendlySideTitle(recipe: Recipe) {
+  const title = normalizeName(recipe.title || "");
+  if (!title) return false;
+  if (NOT_SIDE_KEYWORDS.some((k) => title.includes(k))) return false;
+  return BREAKFAST_SIDE_KEYWORDS.some((k) => title.includes(k));
+}
+
+/* =========================
+   Smart fallback side suggestions (not recipes)
+========================= */
+
+function suggestNonRecipeSide(main: Recipe, mainP: Profile): string | null {
+  const title = normalizeName(main.title || "");
+  const courseInfo = readProfileCourseForUI(main);
+  const aiCourse = courseInfo.course;
+
+  if (aiCourse && isNonMealCourse(aiCourse)) return null;
+
+  // breakfast-ish
+  if (mainP.course === "breakfast" || title.includes("waffle") || title.includes("pancake") || title.includes("eggs")) {
+    return "Fruit, yogurt, or toast";
+  }
+
+  // soups/stews/chili
+  if (mainP.vibes.has("soup") || title.includes("stew") || title.includes("chili")) return "Bread or a simple side salad";
+
+  // pasta
+  if (mainP.vibes.has("pasta") || title.includes("spaghetti") || title.includes("lasagna")) {
+    return "Garlic bread + simple salad";
+  }
+
+  // sandwich/burger
+  if (mainP.vibes.has("sandwich") || title.includes("burger") || title.includes("sandwich") || title.includes("wrap")) {
+    return "Chips, fries, or a side salad";
+  }
+
+  // mexican-ish
+  if (mainP.cuisines.has("mexican") || title.includes("taco") || title.includes("burrito") || title.includes("enchil")) {
+    return "Rice + beans";
+  }
+
+  // asian-ish
+  if (mainP.cuisines.has("asian") || title.includes("teriyaki") || title.includes("stir fry") || title.includes("ramen")) {
+    return "Steamed rice + quick veg";
+  }
+
+  // heavy mains
+  if (mainP.heaviness >= 0.65) return "A simple salad or steamed veg";
+
+  return "Rice, noodles, or a simple salad";
 }
 
 /* =========================
@@ -574,6 +521,7 @@ export default function MealPlanningClient() {
   const { prefs, brainCapacity } = useUIPrefs();
   const prefsForCopy = prefs as any;
 
+  // Background auto-tag (fire-and-forget)
   useEffect(() => {
     fetch("/api/recipes/auto-tag", { method: "POST" }).catch(() => {});
   }, []);
@@ -616,6 +564,8 @@ export default function MealPlanningClient() {
   const [planId, setPlanId] = useState<string | null>(null);
   const [planBusy, setPlanBusy] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
+
+  const [showTopDetails, setShowTopDetails] = useState<boolean>(false);
 
   const recipesById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
 
@@ -695,8 +645,7 @@ export default function MealPlanningClient() {
         const nextSlots: SlotPlan[] = incoming.map((x) => ({
           slotId: String(x.slotId ?? uid()),
           mainId: x.mainId ?? x.recipeId ?? null,
-          sideId: x.sideId ?? null,
-          sideHint: x.sideHint ?? null,
+          sideId: x.sideId ?? x.sideRecipeId ?? null,
           locked: Boolean(x.locked),
           cooked: Boolean(x.cooked),
         }));
@@ -732,12 +681,14 @@ export default function MealPlanningClient() {
     setStatus("");
 
     try {
+      // send BOTH key styles so API/storage stays happy
       const payload = {
         selected_recipe_ids: nextSlots.map((s) => ({
           slotId: s.slotId,
           mainId: s.mainId,
           sideId: s.sideId,
-          sideHint: s.sideHint ?? null,
+          recipeId: s.mainId,
+          sideRecipeId: s.sideId,
           locked: s.locked,
           cooked: s.cooked,
         })),
@@ -763,89 +714,193 @@ export default function MealPlanningClient() {
   }
 
   /* =========================
-     Candidates
+     Smart fill + smart sides
   ========================= */
+
+  function recipeLooksSideLike(recipe: Recipe) {
+    const title = normalizeName(recipe.title || "");
+    if (!title) return false;
+
+    // hard block: sauces/components never treated as side-like meal items
+    if (NOT_SIDE_KEYWORDS.some((k) => title.includes(k))) return false;
+
+    // baked potato / fries / salad etc: side-like
+    if (isLikelySideTitle(recipe)) return true;
+
+    // AI/user say it's a side
+    const heuristic = profilesById.get(recipe.id);
+    const eff = effectiveCourseForPick(recipe, heuristic?.course);
+    return eff === "side";
+  }
+
+  // a "main" that is actually side-like should not receive a side (side-of-a-side problem)
+  function isValidMainForSides(mainId: string) {
+    const r = recipesById.get(mainId);
+    const p = profilesById.get(mainId);
+    if (!r || !p) return false;
+
+    const eff = effectiveCourseForPick(r, p.course);
+    if (!eff) return false;
+
+    if (isNonMealCourse(eff)) return false;
+    if (eff === "dessert" || eff === "snack" || eff === "side") return false;
+
+    if (recipeLooksSideLike(r)) return false;
+
+    // meal mains
+    if (isMealMainCourse(eff)) return true;
+
+    // fallback
+    return p.course === "main" || p.course === "breakfast";
+  }
 
   const mainCandidates = useMemo(() => {
     const ids: string[] = [];
     for (const r of recipes) {
-      const p = profilesById.get(r.id);
+      const heuristic = profilesById.get(r.id);
+      const eff = effectiveCourseForPick(r, heuristic?.course);
+
+      if (eff && isNonMealCourse(eff)) continue;
+      if (eff === "dessert" || eff === "snack" || eff === "side") continue;
+
+      // don't auto-pick side-like things as mains (baked potato, etc.)
+      if (recipeLooksSideLike(r)) continue;
+
+      const p = heuristic;
       if (!p) continue;
-      if (p.flags.blockedForAutopick) continue;
-      if (p.course === "main" || p.course === "breakfast") {
-        if (p.confidence >= 0.52) ids.push(r.id);
-      }
+
+      if (p.course === "main" || p.course === "breakfast") ids.push(r.id);
     }
     return ids;
   }, [recipes, profilesById]);
 
   const sideCandidates = useMemo(() => {
     const ids: string[] = [];
+
     for (const r of recipes) {
-      const p = profilesById.get(r.id);
-      if (!p) continue;
-      if (p.flags.blockedForAutopick) continue;
-      if (p.flags.blockedForSideAutopick) continue;
-      if (p.course === "side") {
-        if (p.confidence >= 0.6) ids.push(r.id);
+      const title = normalizeName(r.title || "");
+      if (!title) continue;
+
+      const heuristic = profilesById.get(r.id);
+      const eff = effectiveCourseForPick(r, heuristic?.course);
+
+      // Never auto-pick these as sides
+      if (eff && isNonMealCourse(eff)) continue;
+
+      // HARD BLOCK: sauce/butter/etc should never become a side via bad tags
+      const userCourse = (r as any)?.user_profile?.course;
+      const userExplicitSide = typeof userCourse === "string" && userCourse.toLowerCase().trim() === "side";
+      if (!userExplicitSide && NOT_SIDE_KEYWORDS.some((k) => title.includes(k))) continue;
+
+      // Never use these courses as sides automatically
+      if (eff === "dessert" || eff === "snack" || eff === "breakfast") continue;
+
+      // If user explicitly says side, allow (user wins)
+      if (userExplicitSide) {
+        // still don't allow non-meal courses as side
+        if (eff && isNonMealCourse(eff)) continue;
+        ids.push(r.id);
+        continue;
       }
+
+      // strict gate OR title-based side
+      const isSideBySignal = eff === "side" || heuristic?.course === "side";
+      const isSideByTitle = isLikelySideTitle(r);
+      if (!isSideBySignal && !isSideByTitle) continue;
+
+      // block main-looking titles from becoming sides
+      if (HARD_MAIN_SIGNALS.some((k) => title.includes(k))) continue;
+
+      ids.push(r.id);
     }
+
     return ids;
   }, [recipes, profilesById]);
 
-  function pickSideForMain(mainId: string, usedSideIds: Set<string>, usedSideVibes: { saladCount: number }) {
+  function pickSideForMain(mainId: string, usedSideIds: Set<string>) {
+    if (!isValidMainForSides(mainId)) return null;
+
+    const mainR = recipesById.get(mainId);
     const mainP = profilesById.get(mainId);
-    if (!mainP) return { sideId: null as string | null, sideHint: null as string | null };
+    if (!mainR || !mainP) return null;
+
+    const mainEff = effectiveCourseForPick(mainR, mainP.course);
+    const wantsBreakfastSide = mainEff === "breakfast" || mainP.course === "breakfast";
 
     let best: { id: string; score: number } | null = null;
 
     for (const sid of sideCandidates) {
-      const sideP = profilesById.get(sid);
-      if (!sideP) continue;
+      const sideR = recipesById.get(sid);
+      const sideP0 = profilesById.get(sid);
+      if (!sideR || !sideP0) continue;
 
-      const sc = scoreSideForMain(mainP, sideP, usedSideIds, sid, usedSideVibes);
+      const sideTitle = normalizeName(sideR.title || "");
+
+      // hard block again (defense-in-depth)
+      if (NOT_SIDE_KEYWORDS.some((k) => sideTitle.includes(k))) continue;
+
+      // breakfast filter
+      if (wantsBreakfastSide && !isBreakfastFriendlySideTitle(sideR)) {
+        continue;
+      }
+
+      // never suggest a side-like *main* as a side if it has main signals (extra safety)
+      if (HARD_MAIN_SIGNALS.some((k) => sideTitle.includes(k))) continue;
+
+      const sideP: Profile = { ...sideP0, course: "side" };
+      let sc = scoreSideForMain(mainP, sideP, usedSideIds, sid);
+
+      // breakfast: prefer lighter / breakfast-y
+      if (wantsBreakfastSide) {
+        sc += isBreakfastFriendlySideTitle(sideR) ? 0.35 : -1.0;
+        if (sideTitle.includes("salad")) sc -= 1.0;
+      }
+
       if (best == null || sc > best.score) best = { id: sid, score: sc };
     }
 
-    // Prefer a real side recipe if it’s decent
-    if (best && best.score >= 0.25) {
-      return { sideId: best.id, sideHint: null };
-    }
+    if (!best) return null;
+    if (best.score < 0.35) return null; // stricter threshold to avoid “random” sides
 
-    // Otherwise: a smart fallback suggestion string
-    const fallbacks = fallbackSideSuggestionsForMain(mainP);
-    return { sideId: null, sideHint: fallbacks[0] ?? null };
+    return best.id;
   }
 
   function recomputeSides(nextSlots: SlotPlan[]) {
     const used = new Set<string>();
-    const usedSideVibes = { saladCount: 0 };
+    const allowedSideSet = new Set(sideCandidates);
 
     const updated = nextSlots.map((s) => {
-      if (!s.mainId) return { ...s, sideId: null, sideHint: null };
+      if (!s.mainId) return { ...s, sideId: null };
 
-      // If we already have a real side and it's still eligible, keep it.
-      if (s.sideId) {
-        const sideP = profilesById.get(s.sideId);
-        const mainP = profilesById.get(s.mainId);
-        if (sideP?.course === "side" && mainP && !sideP.flags.blockedForSideAutopick) {
-          const sc = scoreSideForMain(mainP, sideP, used, s.sideId, usedSideVibes);
-          if (sc >= 0.25) {
-            used.add(s.sideId);
-            if (sideP.vibes.has("salad")) usedSideVibes.saladCount += 1;
-            return { ...s, sideHint: null };
-          }
+      if (!isValidMainForSides(s.mainId)) return { ...s, sideId: null };
+
+      const mainR = recipesById.get(s.mainId);
+      const mainP = profilesById.get(s.mainId);
+      const mainEff = mainR && mainP ? effectiveCourseForPick(mainR, mainP.course) : null;
+      const wantsBreakfastSide = mainEff === "breakfast" || mainP?.course === "breakfast";
+
+      // keep side only if it is still allowed + still sane for breakfast
+      if (s.sideId && allowedSideSet.has(s.sideId)) {
+        const sideR = recipesById.get(s.sideId);
+        const sideTitle = sideR ? normalizeName(sideR.title || "") : "";
+
+        const hardBad =
+          !sideR ||
+          NOT_SIDE_KEYWORDS.some((k) => sideTitle.includes(k)) ||
+          HARD_MAIN_SIGNALS.some((k) => sideTitle.includes(k));
+
+        const breakfastBad = wantsBreakfastSide && sideR && !isBreakfastFriendlySideTitle(sideR);
+
+        if (!hardBad && !breakfastBad) {
+          used.add(s.sideId);
+          return s;
         }
       }
 
-      const picked = pickSideForMain(s.mainId, used, usedSideVibes);
-      if (picked.sideId) {
-        used.add(picked.sideId);
-        const p = profilesById.get(picked.sideId);
-        if (p?.vibes.has("salad")) usedSideVibes.saladCount += 1;
-      }
+      const picked = pickSideForMain(s.mainId, used);
+      if (picked) used.add(picked);
 
-      return { ...s, sideId: picked.sideId, sideHint: picked.sideHint };
+      return { ...s, sideId: picked ?? null };
     });
 
     return updated;
@@ -859,7 +914,7 @@ export default function MealPlanningClient() {
 
     const next = slots.map((s) => {
       if (s.locked) return s;
-      return { ...s, mainId: null, sideId: null, sideHint: null, cooked: false };
+      return { ...s, mainId: null, sideId: null, cooked: false };
     });
 
     let idx = 0;
@@ -889,7 +944,7 @@ export default function MealPlanningClient() {
 
     const next = slots.map((s) => {
       if (s.locked) return s;
-      return { ...s, mainId: null, sideId: null, sideHint: null, cooked: false };
+      return { ...s, mainId: null, sideId: null, cooked: false };
     });
 
     let idx = 0;
@@ -908,56 +963,55 @@ export default function MealPlanningClient() {
   }
 
   async function swapSide(slotId: string) {
+    const allowedSideSet = new Set(sideCandidates);
+
     const next = (() => {
       const used = new Set<string>(slots.map((s) => s.sideId).filter(Boolean) as string[]);
-      const usedSideVibes = { saladCount: 0 };
-
-      for (const s of slots) {
-        if (s.slotId === slotId) continue;
-        if (!s.sideId) continue;
-        const p = profilesById.get(s.sideId);
-        if (p?.vibes.has("salad")) usedSideVibes.saladCount += 1;
-      }
 
       return slots.map((s) => {
         if (s.slotId !== slotId) return s;
         if (!s.mainId) return s;
 
+        if (!isValidMainForSides(s.mainId)) return { ...s, sideId: null };
+
+        const mainR = recipesById.get(s.mainId);
         const mainP = profilesById.get(s.mainId);
-        if (!mainP) return s;
+        const mainEff = mainR && mainP ? effectiveCourseForPick(mainR, mainP.course) : null;
+        const wantsBreakfastSide = mainEff === "breakfast" || mainP?.course === "breakfast";
 
-        // If we currently have a fallback hint (no real side), cycle hint list.
-        if (!s.sideId) {
-          const list = fallbackSideSuggestionsForMain(mainP);
-          const cur = normalizeName(s.sideHint ?? "");
-          const idx = Math.max(
-            0,
-            list.findIndex((x) => normalizeName(x) === cur)
-          );
-          const nextHint = list.length > 0 ? list[(idx + 1) % list.length] : null;
-          return { ...s, sideHint: nextHint };
-        }
-
-        // Else: cycle through real side recipes
         if (s.sideId) used.delete(s.sideId);
 
         let best: { id: string; score: number } | null = null;
         for (const sid of sideCandidates) {
           if (sid === s.sideId) continue;
-          const sideP = profilesById.get(sid);
-          if (!sideP) continue;
+          if (!allowedSideSet.has(sid)) continue;
 
-          const sc = scoreSideForMain(mainP, sideP, used, sid, usedSideVibes);
+          const sideR = recipesById.get(sid);
+          const sideP0 = profilesById.get(sid);
+          if (!sideR || !sideP0) continue;
+
+          const sideTitle = normalizeName(sideR.title || "");
+
+          if (NOT_SIDE_KEYWORDS.some((k) => sideTitle.includes(k))) continue;
+          if (HARD_MAIN_SIGNALS.some((k) => sideTitle.includes(k))) continue;
+
+          if (wantsBreakfastSide && !isBreakfastFriendlySideTitle(sideR)) continue;
+
+          const sideP: Profile = { ...sideP0, course: "side" };
+          let sc = scoreSideForMain(mainP!, sideP, used, sid);
+
+          if (wantsBreakfastSide) {
+            sc += isBreakfastFriendlySideTitle(sideR) ? 0.35 : -1.0;
+            if (sideTitle.includes("salad")) sc -= 1.0;
+          }
+
           if (best == null || sc > best.score) best = { id: sid, score: sc };
         }
 
-        const nextSide = best && best.score >= 0.25 ? best.id : null;
+        const nextSide = best && best.score >= 0.35 ? best.id : null;
+        if (nextSide) used.add(nextSide);
 
-        if (nextSide) return { ...s, sideId: nextSide, sideHint: null };
-
-        // no good side recipe? fall back to hint
-        const fallbacks = fallbackSideSuggestionsForMain(mainP);
-        return { ...s, sideId: null, sideHint: fallbacks[0] ?? null };
+        return { ...s, sideId: nextSide };
       });
     })();
 
@@ -999,7 +1053,7 @@ export default function MealPlanningClient() {
   async function addMissingToShoppingList() {
     const miss = pantryProjection.missing;
     if (miss.length === 0) {
-      setStatus("Nothing missing 🎉");
+      setStatus("Nothing missing");
       setTimeout(() => setStatus(""), 1200);
       return;
     }
@@ -1067,6 +1121,14 @@ export default function MealPlanningClient() {
      UI
 ========================= */
 
+  const box = "rounded-3xl bg-white/5 ring-1 ring-white/10";
+  const pill =
+    "rounded-full bg-white/8 hover:bg-white/12 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition";
+  const pillActive =
+    "rounded-full bg-emerald-400/25 hover:bg-emerald-400/30 px-4 py-2 text-xs font-extrabold ring-1 ring-white/10 transition";
+  const tinyBtn =
+    "rounded-full bg-white/8 hover:bg-white/12 px-3 py-1.5 text-xs font-semibold ring-1 ring-white/10 transition";
+
   const header = (
     <div className="mt-2">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1118,6 +1180,34 @@ export default function MealPlanningClient() {
 
           <button
             type="button"
+            onClick={async () => {
+              const next = makeEmptySlots(mealCount);
+              setSlots(next);
+              await savePlan(next);
+            }}
+            disabled={saving || planBusy}
+            className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+            title="Clear the whole plan"
+          >
+            Clear plan
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              const next = recomputeSides([...slots]);
+              setSlots(next);
+              await savePlan(next);
+            }}
+            disabled={saving || planBusy}
+            className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+            title="Re-pick sides for current mains"
+          >
+            Re-pick sides
+          </button>
+
+          <button
+            type="button"
             onClick={addMissingToShoppingList}
             disabled={loadingStorage || pantryProjection.missing.length === 0}
             className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
@@ -1125,118 +1215,93 @@ export default function MealPlanningClient() {
           >
             Add → Shopping list
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowTopDetails((v) => !v)}
+            className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-semibold ring-1 ring-white/10 transition"
+            title="Show/hide pantry + notes"
+          >
+            {showTopDetails ? "Hide details" : "Show details"}
+          </button>
         </div>
       </div>
+
+      {showTopDetails ? (
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className={[box, "p-5 text-white"].join(" ")}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-extrabold tracking-tight">Pantry projection</div>
+                <div className="mt-1 text-sm text-white/60">
+                  Based on your plan (mains + sides). Approximate, but helpful.
+                </div>
+              </div>
+              <button type="button" onClick={loadStorage} className={tinyBtn} disabled={loadingStorage}>
+                {loadingStorage ? "Refreshing…" : "Refresh pantry"}
+              </button>
+            </div>
+
+            {storageError ? (
+              <div className="mt-4 text-sm text-red-300">{storageError}</div>
+            ) : (
+              <>
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
+                  <span className={pillActive}>Missing: {pantryProjection.missing.length}</span>
+                  <span className={pill}>Tracked pantry items: {storageItems.length}</span>
+                  <span className={pill}>Ingredients in plan: {pantryProjection.usage.length}</span>
+                </div>
+
+                {pantryProjection.missing.length > 0 ? (
+                  <div className="mt-4 space-y-2">
+                    {pantryProjection.missing.slice(0, 8).map((m) => (
+                      <div key={m.key} className="flex items-center justify-between gap-3 text-sm">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-white/85 truncate">{m.matchedName || m.display}</div>
+                          <div className="text-xs text-white/55">
+                            need {m.needed} • have {m.have}
+                          </div>
+                        </div>
+                        <div className="text-xs text-white/55 shrink-0">+{Math.max(1, m.needed - m.have)}</div>
+                      </div>
+                    ))}
+
+                    {pantryProjection.missing.length > 8 ? (
+                      <div className="text-xs text-white/45 mt-2">…and {pantryProjection.missing.length - 8} more</div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-4 text-sm text-white/70">
+                    No obvious gaps. (Either you’re stocked, or the pantry isn’t fully tracked yet.)
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className={[box, "p-5 text-white"].join(" ")}>
+            <div className="text-lg font-extrabold tracking-tight">Side rules (smarter)</div>
+            <div className="mt-2 text-sm text-white/65 space-y-2">
+              <div>• Butter/sauce/dressing/marinade/etc are hard-blocked as sides.</div>
+              <div>• Breakfast mains only accept breakfast-ish sides (fruit/yogurt/toast/etc).</div>
+              <div>• Side-like “mains” (baked potato, etc) won’t get a “side of a side”.</div>
+              <div>• If no recipe side fits, you still get a sensible non-recipe suggestion.</div>
+            </div>
+          </div>
+
+          <div className={[box, "p-5 text-white"].join(" ")}>
+            <div className="text-lg font-extrabold tracking-tight">Tip</div>
+            <div className="mt-2 text-sm text-white/65">
+              Lock the meals you want, then spam “Regenerate (unlocked)” until the chaos behaves.
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 
-  const box = "rounded-3xl bg-white/5 ring-1 ring-white/10";
-  const pill =
-    "rounded-full bg-white/8 hover:bg-white/12 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition";
-  const pillActive =
-    "rounded-full bg-emerald-400/25 hover:bg-emerald-400/30 px-4 py-2 text-xs font-extrabold ring-1 ring-white/10 transition";
-  const tinyBtn =
-    "rounded-full bg-white/8 hover:bg-white/12 px-3 py-1.5 text-xs font-semibold ring-1 ring-white/10 transition";
-  const tinyBtn2 =
-    "rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition";
-
   return (
     <RcPageShell header={header}>
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
-        <div className={[box, "p-5 text-white"].join(" ")}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-lg font-extrabold tracking-tight">Pantry projection</div>
-              <div className="mt-1 text-sm text-white/60">
-                Based on your plan (mains + suggested sides). Approximate, but helpful.
-              </div>
-            </div>
-            <button type="button" onClick={loadStorage} className={tinyBtn} disabled={loadingStorage}>
-              {loadingStorage ? "Refreshing…" : "Refresh pantry"}
-            </button>
-          </div>
-
-          {storageError ? (
-            <div className="mt-4 text-sm text-red-300">{storageError}</div>
-          ) : (
-            <>
-              <div className="mt-4 flex items-center gap-2 flex-wrap">
-                <span className={pillActive}>Missing: {pantryProjection.missing.length}</span>
-                <span className={pill}>Tracked pantry items: {storageItems.length}</span>
-                <span className={pill}>Ingredients in plan: {pantryProjection.usage.length}</span>
-              </div>
-
-              {pantryProjection.missing.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  {pantryProjection.missing.slice(0, 8).map((m) => (
-                    <div key={m.key} className="flex items-center justify-between gap-3 text-sm">
-                      <div className="min-w-0">
-                        <div className="font-semibold text-white/85 truncate">{m.matchedName || m.display}</div>
-                        <div className="text-xs text-white/55">
-                          need {m.needed} • have {m.have}
-                        </div>
-                      </div>
-                      <div className="text-xs text-white/55 shrink-0">+{Math.max(1, m.needed - m.have)}</div>
-                    </div>
-                  ))}
-
-                  {pantryProjection.missing.length > 8 ? (
-                    <div className="text-xs text-white/45 mt-2">…and {pantryProjection.missing.length - 8} more</div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="mt-4 text-sm text-white/70">
-                  No obvious gaps. (Either you’re stocked, or the pantry isn’t fully tracked yet.)
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className={[box, "p-5 text-white"].join(" ")}>
-          <div className="text-lg font-extrabold tracking-tight">Smart guardrails</div>
-          <div className="mt-2 text-sm text-white/65 space-y-2">
-            <div>• Pancakes/waffles/etc are treated as breakfast (even if tagged wrong).</div>
-            <div>• Main-shaped recipes won’t be auto-picked as sides.</div>
-            <div>• If no good side recipe exists, you still get a smart suggestion.</div>
-            <div className="text-white/45">Manual choices are always allowed.</div>
-          </div>
-        </div>
-
-        <div className={[box, "p-5 text-white"].join(" ")}>
-          <div className="text-lg font-extrabold tracking-tight">Controls</div>
-          <div className="mt-3 grid gap-3">
-            <button
-              type="button"
-              onClick={async () => {
-                const next = makeEmptySlots(mealCount);
-                setSlots(next);
-                await savePlan(next);
-              }}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10 transition"
-            >
-              Clear plan
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                const next = recomputeSides([...slots]);
-                setSlots(next);
-                await savePlan(next);
-              }}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10 transition"
-            >
-              Re-pick sides
-            </button>
-
-            <div className="text-xs text-white/45">
-              Tip: Lock the ones you want. Then spam “Regenerate (unlocked)” until the chaos behaves.
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="mt-8">
         {loadingRecipes ? (
           <div className="text-white/70">Loading…</div>
@@ -1253,8 +1318,12 @@ export default function MealPlanningClient() {
               const uncertainMain =
                 !!mainP &&
                 (mainP.course === "unknown" ||
-                  mainP.flags.conflict ||
-                  (mainP.confidence < 0.5 && titleTokens((main ?? { id: "", title: "" }) as any).size <= 2));
+                  (mainP.confidence < 0.5 && titleTokens(main ?? { id: "", title: "" }).size <= 2));
+
+              const nonRecipeSuggestion =
+                main && mainP && !slot.sideId && isValidMainForSides(main.id)
+                  ? suggestNonRecipeSide(main, mainP)
+                  : null;
 
               return (
                 <div key={slot.slotId} className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
@@ -1289,13 +1358,11 @@ export default function MealPlanningClient() {
                       <button
                         type="button"
                         onClick={async () => {
-                          const next = slots.map((s) =>
-                            s.slotId === slot.slotId ? { ...s, locked: !s.locked } : s
-                          );
+                          const next = slots.map((s) => (s.slotId === slot.slotId ? { ...s, locked: !s.locked } : s));
                           setSlots(next);
                           await savePlan(next);
                         }}
-                        className={tinyBtn2}
+                        className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition"
                       >
                         {slot.locked ? "Unlock" : "Lock"}
                       </button>
@@ -1304,7 +1371,7 @@ export default function MealPlanningClient() {
                         type="button"
                         onClick={() => swapSide(slot.slotId)}
                         disabled={!slot.mainId}
-                        className={tinyBtn2 + " disabled:opacity-50"}
+                        className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
                         title="Swap the side suggestion"
                       >
                         Swap side
@@ -1339,7 +1406,7 @@ export default function MealPlanningClient() {
                     onChange={async (e) => {
                       const value = e.target.value || null;
                       const next = slots.map((s) =>
-                        s.slotId === slot.slotId ? { ...s, mainId: value, cooked: false, sideId: null, sideHint: null } : s
+                        s.slotId === slot.slotId ? { ...s, mainId: value, cooked: false, sideId: null } : s
                       );
 
                       const withSides = recomputeSides(next);
@@ -1353,10 +1420,13 @@ export default function MealPlanningClient() {
                     <optgroup label="Good mains (auto-picked)">
                       {recipes
                         .filter((r) => {
-                          const p = profilesById.get(r.id);
-                          if (!p) return false;
-                          if (p.flags.blockedForAutopick) return false;
-                          return p.course === "main" || p.course === "breakfast";
+                          const heuristic = profilesById.get(r.id);
+                          const eff = effectiveCourseForPick(r, heuristic?.course);
+                          if (eff && isNonMealCourse(eff)) return false;
+                          if (eff === "dessert" || eff === "snack" || eff === "side") return false;
+                          if (recipeLooksSideLike(r)) return false;
+                          const p = heuristic;
+                          return p?.course === "main" || p?.course === "breakfast";
                         })
                         .map((rec) => (
                           <option key={rec.id} value={rec.id}>
@@ -1367,18 +1437,12 @@ export default function MealPlanningClient() {
                     </optgroup>
 
                     <optgroup label="Everything else (allowed, but not auto-picked)">
-                      {recipes
-                        .filter((r) => {
-                          const p = profilesById.get(r.id);
-                          if (!p) return true;
-                          return p.flags.blockedForAutopick || !(p.course === "main" || p.course === "breakfast");
-                        })
-                        .map((rec) => (
-                          <option key={rec.id} value={rec.id}>
-                            {rec.favorite ? "★ " : ""}
-                            {rec.title}
-                          </option>
-                        ))}
+                      {recipes.map((rec) => (
+                        <option key={rec.id} value={rec.id}>
+                          {rec.favorite ? "★ " : ""}
+                          {rec.title}
+                        </option>
+                      ))}
                     </optgroup>
                   </select>
 
@@ -1389,10 +1453,6 @@ export default function MealPlanningClient() {
                         <Link href={`/recipes/${side.id}`} className="underline">
                           {side.title}
                         </Link>
-                      ) : slot.sideHint ? (
-                        <span className="text-white/70">
-                          {slot.sideHint} <span className="text-white/40">(suggested)</span>
-                        </span>
                       ) : (
                         <span className="text-white/50">— none —</span>
                       )
@@ -1401,13 +1461,27 @@ export default function MealPlanningClient() {
                     )}
                   </div>
 
-                  {slot.mainId && mainP ? (
+                  {slot.mainId && !slot.sideId && nonRecipeSuggestion ? (
+                    <div className="mt-2 text-xs text-white/55">
+                      Suggested side (not a recipe):{" "}
+                      <span className="text-white/75 font-semibold">{nonRecipeSuggestion}</span>
+                    </div>
+                  ) : null}
+
+                  {slot.mainId && main && mainP ? (
                     <div className="mt-2 text-xs text-white/45">
-                      Classified as{" "}
-                      <span className="text-white/65 font-semibold">
-                        {mainP.course === "breakfast" ? "breakfast/main" : mainP.course}
-                      </span>
-                      {mainP.flags.conflict ? <span className="text-white/45"> • (tags conflicted)</span> : null}
+                      {(() => {
+                        const ai = readProfileCourseForUI(main);
+                        const shown = ai.course ?? (mainP.course === "breakfast" ? "breakfast" : mainP.course);
+                        const src = ai.source === "none" ? null : ai.source;
+
+                        return (
+                          <>
+                            Classified as <span className="text-white/65 font-semibold">{shown}</span>
+                            {src ? <span className="text-white/40"> • {src}</span> : null}
+                          </>
+                        );
+                      })()}
                       {mainP.vibes.size > 0 ? (
                         <>
                           {" "}
