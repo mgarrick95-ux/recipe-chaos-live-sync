@@ -1,4 +1,4 @@
-// lib/copy.ts
+﻿// lib/copy.ts
 // RecipeChaos copy system (tone + brain capacity aware)
 // Goal: NEVER crash. Missing keys must degrade gracefully.
 
@@ -28,7 +28,7 @@ const COPY: CopyMap = {
   GENERIC_UPDATED: {
     minimal: "Updated.",
     gentle: "Updated.",
-    snark_lite: "Updated. You’re good.",
+    snark_lite: "Updated. You're good.",
     spicy: "Updated. Chaos contained.",
   },
 
@@ -54,7 +54,7 @@ const COPY: CopyMap = {
   BRAIN_EXTRA: {
     minimal: "Extra",
     gentle: "Extra",
-    snark_lite: "Extra (we’ve got juice)",
+    snark_lite: "Extra (we've got juice)",
     spicy: "Extra (are you sure?)",
   },
 
@@ -68,7 +68,7 @@ const COPY: CopyMap = {
 
   WEEKLY_EMPTY: {
     minimal: "No items this week.",
-    gentle: "Nothing here right now. That’s okay.",
+    gentle: "Nothing here right now. That's okay.",
     snark_lite: "No items this week. Iconic.",
     spicy: "No items this week. Bold choice.",
     byBrain: {
@@ -80,7 +80,7 @@ const COPY: CopyMap = {
       },
       some: {
         minimal: "No items yet.",
-        gentle: "No items yet — keep it simple.",
+        gentle: "No items yet €” keep it simple.",
         snark_lite: "No items yet. Low-power week.",
         spicy: "No items yet. Battery saver vibes.",
       },
@@ -105,9 +105,9 @@ export function t(key: string, prefs?: UIPrefsLike, brain?: BrainCapacity): stri
   const tone = normalizeTone(prefs);
   const entry = COPY[key];
 
-  // ✅ Hard guard: missing key should NEVER crash
+  // œ… Hard guard: missing key should NEVER crash
   if (!entry) {
-    // Don’t leak internal keys into UI unless you want that.
+    // Don't leak internal keys into UI unless you want that.
     // Return something calm and generic.
     return tone === "minimal" ? "Updated." : "Done.";
   }
@@ -128,3 +128,4 @@ export function t(key: string, prefs?: UIPrefsLike, brain?: BrainCapacity): stri
   // absolute fallback (should never happen)
   return "Updated.";
 }
+

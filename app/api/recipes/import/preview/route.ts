@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
 type PreviewRequest = {
   url: string;
@@ -192,7 +192,7 @@ function normalizeSteps(rawSteps: string[]): string[] {
   const cleaned = (rawSteps || [])
     .map((s) => cleanText(String(s)))
     .map((s) => s.replace(/^\s*(directions|instructions|method)\s*:\s*/i, ""))
-    .map((s) => s.replace(/^\s*[-•]+\s*/g, "").trim())
+    .map((s) => s.replace(/^\s*[-€¢]+\s*/g, "").trim())
     .filter(Boolean);
 
   if (cleaned.length === 0) return [];
@@ -302,7 +302,7 @@ function extractFromNextData(nextData: any): {
 } | null {
   if (!nextData || typeof nextData !== "object") return null;
 
-  // We don’t assume a fixed schema; we just deep-find a recipe-ish node.
+  // We don't assume a fixed schema; we just deep-find a recipe-ish node.
   const recipeNode = deepFindRecipeNode(nextData);
   if (!recipeNode) return null;
 
@@ -428,3 +428,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

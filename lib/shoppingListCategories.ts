@@ -105,7 +105,37 @@ export function categorizeItemName(name: string): ShoppingCategory {
     return "Meat & Seafood";
   }
 
-  // Produce
+  // Spices & Baking  ✅ (moved ABOVE Produce)
+  if (
+    hasAny(n, [
+      "flour",
+      "baking soda",
+      "baking powder",
+      "yeast",
+      "vanilla",
+      "cinnamon",
+      "paprika",
+      "smoked paprika",
+      "oregano",
+      "thyme",
+      "spice",
+      "salt",
+      "black pepper",
+      "white pepper",
+      "cayenne",
+      "chili powder",
+      "onion powder",
+      "garlic powder",
+      "cocoa",
+      "seasoning",
+      "everything but the",
+      "everything but",
+    ])
+  ) {
+    return "Spices & Baking";
+  }
+
+  // Produce  ✅ (remove generic "pepper")
   if (
     hasAny(n, [
       "lettuce",
@@ -117,7 +147,9 @@ export function categorizeItemName(name: string): ShoppingCategory {
       "garlic",
       "carrot",
       "celery",
-      "pepper",
+      "bell pepper",
+      "jalapeno",
+      "jalapeño",
       "zucchini",
       "mushroom",
       "broccoli",
@@ -170,27 +202,6 @@ export function categorizeItemName(name: string): ShoppingCategory {
     return "Snacks";
   }
 
-  // Spices & Baking
-  if (
-    hasAny(n, [
-      "flour",
-      "baking soda",
-      "baking powder",
-      "yeast",
-      "vanilla",
-      "cinnamon",
-      "paprika",
-      "oregano",
-      "thyme",
-      "spice",
-      "salt",
-      "pepper",
-      "cocoa",
-    ])
-  ) {
-    return "Spices & Baking";
-  }
-
   // Pantry
   if (
     hasAny(n, [
@@ -216,6 +227,8 @@ export function categorizeItemName(name: string): ShoppingCategory {
       "soy sauce",
       "hot sauce",
       "sugar",
+      "brown sugar",
+      "white sugar",
     ])
   ) {
     return "Pantry";

@@ -1,58 +1,140 @@
+// app/api/storage-items/route.ts
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
 
-export async function GET() {
-  try {
-    const supabase = supabaseServer;
+export const dynamic = "force-dynamic";
 
-    const { data, error } = await supabase
-      .from("storage_items")
-      .select("*")
-      .order("created_at", { ascending: false });
+const ROUTE_PATH = "/api/storage-items";
 
-    if (error) throw error;
+function getSupabaseEnv() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-    return NextResponse.json({ ok: true, items: data ?? [] });
-  } catch (err: any) {
-    console.error("GET /api/storage-items error:", err);
-    return NextResponse.json(
-      { ok: false, error: err?.message ?? "Failed to load storage items" },
-      { status: 500 }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Supabase env missing (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY)."
     );
   }
+
+  return { supabaseUrl, supabaseAnonKey };
 }
 
-export async function POST(request: Request) {
+function getBearerHeaderIfValid(req: Request): string | null {
+  const raw =
+    req.headers.get("authorization") ||
+    req.headers.get("Authorization") ||
+    "";
+  if (!raw) return null;
+
+  const parts = raw.trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  if (parts[0].toLowerCase() !== "bearer") return null;
+
+  const token = parts.slice(1).join(" ").trim();
+  if (!token || token === "null" || token === "undefined") return null;
+  if (token.length < 20) return null;
+
+  return `Bearer ${token}`;
+}
+
+function supabaseFromCookies() {
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv();
+  const cookieStore = cookies();
+
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          cookieStore.set({ name, value, ...options });
+        });
+      },
+    },
+  });
+}
+
+function supabaseFromBearer(authHeader: string) {
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv();
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: authHeader,
+      },
+    },
+  });
+}
+
+async function getAuthedSupabase(req: Request) {
+  const bearer = getBearerHeaderIfValid(req);
+
+  if (bearer) {
+    const supabase = supabaseFromBearer(bearer);
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
+
+    if (!authErr && user) return { supabase, user, authErr: null };
+
+    const supabaseCookie = supabaseFromCookies();
+    const {
+      data: { user: user2 },
+      error: authErr2,
+    } = await supabaseCookie.auth.getUser();
+
+    return { supabase: supabaseCookie, user: user2, authErr: authErr2 };
+  }
+
+  const supabase = supabaseFromCookies();
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  return { supabase, user, authErr };
+}
+
+export async function GET(req: Request) {
   try {
-    const body = await request.json();
+    const { supabase, user, authErr } = await getAuthedSupabase(req);
 
-    const supabase = supabaseServer;
+    if (authErr || !user) {
+      return NextResponse.json(
+        { error: `401 ${ROUTE_PATH}: Not authenticated.` },
+        { status: 401 }
+      );
+    }
 
-    // Keep this permissive; your UI can send extra fields without breaking.
-    const payload = {
-      name: body.name ?? null,
-      location: body.location ?? null, // e.g. Freezer/Fridge/Pantry
-      quantity: body.quantity ?? null,
-      unit: body.unit ?? null, // e.g. bag, lb, box
-      category: body.category ?? null,
-      is_leftover: body.is_leftover ?? false,
-      use_by: body.use_by ?? null, // ISO date string or null
-      notes: body.notes ?? null,
-    };
-
-    const { data, error } = await supabase
+    const { data: items, error } = await supabase
       .from("storage_items")
-      .insert(payload)
       .select("*")
-      .single();
+      .order("updated_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      return NextResponse.json(
+        {
+          error: `500 ${ROUTE_PATH}: Failed to load storage items (${error.message}).`,
+        },
+        { status: 500 }
+      );
+    }
 
-    return NextResponse.json({ ok: true, item: data });
-  } catch (err: any) {
-    console.error("POST /api/storage-items error:", err);
+    return NextResponse.json({ items: items ?? [] }, { status: 200 });
+  } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: err?.message ?? "Failed to create storage item" },
+      { error: `500 ${ROUTE_PATH}: ${e?.message || "Unexpected error"}` },
       { status: 500 }
     );
   }

@@ -1,4 +1,4 @@
-// app/page.tsx
+﻿// app/page.tsx
 import Link from "next/link";
 
 function SoftCard({
@@ -22,7 +22,7 @@ function SoftCard({
         <div className="min-w-0">
           <div className="text-lg font-extrabold tracking-tight">{title}</div>
           <div className="mt-1 text-sm text-white/70">{desc}</div>
-          <div className="mt-4 text-xs text-white/55 group-hover:text-white/70">Open →</div>
+          <div className="mt-4 text-xs text-white/55 group-hover:text-white/70">Open †’</div>
         </div>
       </div>
     </Link>
@@ -47,7 +47,7 @@ export default function HomePage() {
               Decide what to cook, without the chaos.
             </h1>
             <p className="mt-4 text-white/75 text-lg">
-              Use what you’ve got. Make a plan if you feel like it. Nothing is a commitment.
+              Use what you've got. Make a plan if you feel like it. Nothing is a commitment.
             </p>
 
             <div className="mt-7 flex flex-wrap gap-3">
@@ -71,9 +71,9 @@ export default function HomePage() {
       {/* Cards */}
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="grid gap-5 md:grid-cols-3">
-          <SoftCard title="Recipes" desc="Store and revisit meals you actually make." href="/recipes" icon="📖" />
-          <SoftCard title="Pantry & Freezer" desc="Track what’s actually in stock." href="/frostpantry" icon="🧊" />
-          <SoftCard title="Meal Planning" desc="Simple, flexible meal ideas — no pressure." href="/meal-planning" icon="🗓" />
+          <SoftCard title="Recipes" desc="Store and revisit meals you actually make." href="/recipes" icon="ðŸ“–" />
+          <SoftCard title="Pantry & Freezer" desc="Track what's actually in stock." href="/frostpantry" icon="ðŸ§Š" />
+          <SoftCard title="Meal Planning" desc="Simple, flexible meal ideas €” no pressure." href="/meal-planning" icon="ðŸ—“" />
         </div>
 
         <div className="mt-10 text-xs text-white/45">
@@ -83,3 +83,4 @@ export default function HomePage() {
     </main>
   );
 }
+

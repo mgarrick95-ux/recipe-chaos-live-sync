@@ -1,114 +1,32 @@
 // app/api/shopping-list/sync-derived/route.ts
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { normalizeShoppingListIdentity } from "@/lib/shopping/normalize";
 
 type AnyRecord = Record<string, any>;
-
 export const dynamic = "force-dynamic";
 
-/** ---------- cleaning helpers ---------- */
-function normalizeFractionChars(raw: string): string {
-  return (raw || "")
-    .replace(/[\u2044\u2215\uFF0F]/g, "/") // ⁄ ∕ ／
-    .replace(/\u00BC/g, " 1/4 ") // ¼
-    .replace(/\u00BD/g, " 1/2 ") // ½
-    .replace(/\u00BE/g, " 3/4 ") // ¾
-    .replace(/\u2153/g, " 1/3 ") // ⅓
-    .replace(/\u2154/g, " 2/3 ") // ⅔
-    .replace(/\u215B/g, " 1/8 ") // ⅛
-    .replace(/\u215C/g, " 3/8 ") // ⅜
-    .replace(/\u215D/g, " 5/8 ") // ⅝
-    .replace(/\u215E/g, " 7/8 "); // ⅞
-}
+function supabaseFromCookies() {
+  const cookieStore = cookies();
 
-function stripLeadingMeasurement(raw: string): string {
-  let s = normalizeFractionChars(raw).trim();
-  if (!s) return s;
-
-  s = s.replace(/\s+/g, " ").trim();
-  s = s.replace(/^[-•*]+\s*/, "").trim();
-
-  // mixed fraction "1 1/2"
-  s = s.replace(/^\d+\s+\d+\/\d+\s*/, "");
-  // fraction "1/2"
-  s = s.replace(/^\d+\/\d+\s*/, "");
-  // decimal/int "2" "1.5"
-  s = s.replace(/^\d+(\.\d+)?\s*/, "");
-
-  s = s.replace(/^of\s+/i, "").trim();
-
-  const unitPattern =
-    /^(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|oz|ounce|ounces|lb|lbs|pound|pounds|g|gram|grams|kg|ml|l|liter|litre|liters|litres|pinch|dash|clove|cloves|slice|slices|can|cans|package|packages|packet|packets)\b\.?\s*/i;
-  if (unitPattern.test(s)) s = s.replace(unitPattern, "").trim();
-
-  s = s.replace(/^(pinch|dash)\s+of\s+/i, "").trim();
-  s = s.replace(/^\/\d+\s*/, "").trim();
-
-  return s || normalizeFractionChars(raw).trim();
-}
-
-/**
- * Identity-preserving: do NOT strip "minced", "chopped", etc.
- * We only remove “notes/chatter”.
- */
-function stripTrailingNotes(display: string): string {
-  let s = (display || "").trim();
-  if (!s) return s;
-
-  const parts = s
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (parts.length <= 1) return s;
-
-  const first = parts[0];
-  const rest = parts
-    .slice(1)
-    .join(", ")
-    .toLowerCase();
-
-  const removable = [
-    "divided",
-    "melted",
-    "softened",
-    "room temperature",
-    "to taste",
-    "or to taste",
-    "more to taste",
-    "or more to taste",
-    "as needed",
-    "for serving",
-    "for garnish",
-    "optional",
-    "peeled",
-    "seeded",
-    "crushed",
-    "drained",
-    "rinsed",
-    "fresh",
-    "packed",
-    "warm",
-    "cold",
-  ];
-
-  const shouldStrip =
-    removable.some((p) => rest.includes(p)) || rest.split(" ").length <= 4;
-  return shouldStrip ? first : s;
-}
-
-function displayBaseNameForIdentity(raw: string) {
-  const noMeasure = stripLeadingMeasurement(raw);
-  const noNotes = stripTrailingNotes(noMeasure);
-  return noNotes.trim() || (raw || "").trim();
-}
-
-function normalizeKey(input: string) {
-  return (input || "")
-    .toLowerCase()
-    .trim()
-    .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: any) {
+          cookieStore.set({ name, value: "", ...options, maxAge: 0 });
+        },
+      },
+    }
+  );
 }
 
 function toPositiveInt(n: unknown, fallback = 1): number {
@@ -172,6 +90,17 @@ function extractIngredients(recipe: AnyRecord): string[] {
 
 export async function POST(req: Request) {
   try {
+    const supabase = supabaseFromCookies();
+
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
+
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => null);
     const recipeIdsRaw = body?.recipe_ids;
 
@@ -211,7 +140,7 @@ export async function POST(req: Request) {
     // 1) Fetch recipes (if any)
     let recipes: AnyRecord[] = [];
     if (recipe_ids.length > 0) {
-      const { data, error: recipesErr } = await supabaseServer
+      const { data, error: recipesErr } = await supabase
         .from("recipes")
         .select("*")
         .in("id", recipe_ids);
@@ -226,17 +155,21 @@ export async function POST(req: Request) {
     }
 
     // 2) Collect ingredients (+ sides)
-    const allIngredientLines: { line: string; source_recipe_id: string | null }[] = [];
+    const allIngredientLines: { line: string; source_recipe_id: string | null }[] =
+      [];
 
     for (const r of recipes ?? []) {
       const ingredients = extractIngredients(r as AnyRecord);
       for (const ing of ingredients) {
         const line = String(ing ?? "").trim();
-        if (line) allIngredientLines.push({ line, source_recipe_id: String((r as any).id) });
+        if (line)
+          allIngredientLines.push({
+            line,
+            source_recipe_id: String((r as any).id),
+          });
       }
     }
 
-    // Add side lines as ingredient-like lines (no recipe id)
     for (const s of side_lines) {
       const line = String(s ?? "").trim();
       if (line) allIngredientLines.push({ line, source_recipe_id: null });
@@ -273,15 +206,19 @@ export async function POST(req: Request) {
     >();
 
     for (const item of allIngredientLines) {
-      const base = displayBaseNameForIdentity(item.line);
-      const normalized_name = normalizeKey(base);
-      if (!normalized_name) continue;
+      const ident = normalizeShoppingListIdentity(item.line);
+
+      // ✅ IMPORTANT: drop garbage (everything-but-the / jumbo / etc.)
+      if (!ident.displayName || !ident.normalizedName) continue;
+
+      const normalized_name = ident.normalizedName;
+      const display_name = ident.displayName;
 
       const ex = counts.get(normalized_name);
       if (!ex) {
         counts.set(normalized_name, {
           normalized_name,
-          display_name: base,
+          display_name,
           count: 1,
           any_recipe_id: item.source_recipe_id ?? null,
         });
@@ -291,10 +228,10 @@ export async function POST(req: Request) {
     }
 
     const toSync = Array.from(counts.values()).map((v) => ({
-      user_id: null as string | null,
+      user_id: user.id,
       name: v.display_name,
       normalized_name: v.normalized_name,
-      quantity: toPositiveInt(v.count, 1), // store count as quantity
+      quantity: String(toPositiveInt(v.count, 1)), // schema is text
       unit: null as string | null,
       source_type: "derived" as const,
       source_recipe_id: v.any_recipe_id ?? null,
@@ -316,12 +253,13 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4) Check existing items by normalized_name
+    // 4) Check existing items for THIS USER only
     const normalizedToSync = toSync.map((x) => x.normalized_name);
 
-    const { data: existing, error: existingErr } = await supabaseServer
+    const { data: existing, error: existingErr } = await supabase
       .from("shopping_list_items")
       .select("id,normalized_name,source_type,dismissed,checked,is_derived,quantity")
+      .eq("user_id", user.id)
       .in("normalized_name", normalizedToSync);
 
     if (existingErr) {
@@ -331,26 +269,27 @@ export async function POST(req: Request) {
       );
     }
 
+    // “Already active” means ANY active row (manual or derived) for that normalized_name.
     const activeSet = new Set<string>();
-    const derivedDismissedByNormalized = new Map<string, string>(); // normalized -> id
-    const activeDerivedByNormalized = new Map<string, { id: string; quantity: any }>(); // normalized -> row
+    const derivedDismissedByNormalized = new Map<string, string>();
+    const activeDerivedByNormalized = new Map<string, { id: string; quantity: any }>();
 
     for (const row of existing ?? []) {
       const nn = String((row as any)?.normalized_name ?? "").trim();
       if (!nn) continue;
 
       const dismissed = !!(row as any)?.dismissed;
-      const sourceType = String((row as any)?.source_type ?? "");
+      const isDerived = !!(row as any)?.is_derived;
 
       if (!dismissed) activeSet.add(nn);
 
-      if (dismissed && sourceType === "derived") {
+      if (dismissed && isDerived) {
         if (!derivedDismissedByNormalized.has(nn)) {
           derivedDismissedByNormalized.set(nn, String((row as any)?.id));
         }
       }
 
-      if (!dismissed && sourceType === "derived") {
+      if (!dismissed && isDerived) {
         activeDerivedByNormalized.set(nn, {
           id: String((row as any)?.id),
           quantity: (row as any)?.quantity,
@@ -360,16 +299,14 @@ export async function POST(req: Request) {
 
     const toReviveIds: string[] = [];
     const toInsert: typeof toSync = [];
-    const toUpdateActiveDerived: { id: string; quantity: number; name: string }[] = [];
+    const toUpdateActiveDerived: { id: string; quantity: string; name: string }[] = [];
 
     for (const item of toSync) {
-      // If there is an active item with same normalized_name, we do NOT insert a new row.
-      // If it’s active derived, update its quantity to current count.
       if (activeSet.has(item.normalized_name)) {
         const activeDerived = activeDerivedByNormalized.get(item.normalized_name);
         if (activeDerived) {
-          const nextQty = toPositiveInt(item.quantity, 1);
-          const prevQty = toPositiveInt(activeDerived.quantity, 1);
+          const nextQty = String(toPositiveInt(item.quantity, 1));
+          const prevQty = String(toPositiveInt(activeDerived.quantity, 1));
           if (nextQty !== prevQty) {
             toUpdateActiveDerived.push({
               id: activeDerived.id,
@@ -393,18 +330,17 @@ export async function POST(req: Request) {
     // 5) Revive dismissed derived rows
     let revived: any[] = [];
     if (toReviveIds.length > 0) {
-      const { data: revivedRows, error: reviveErr } = await supabaseServer
+      const { data: revivedRows, error: reviveErr } = await supabase
         .from("shopping_list_items")
         .update({
           dismissed: false,
           checked: false,
           is_derived: true,
           source_type: "derived",
+          user_id: user.id,
         })
         .in("id", toReviveIds)
-        .select(
-          "id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity"
-        );
+        .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity");
 
       if (reviveErr) {
         return NextResponse.json(
@@ -415,19 +351,19 @@ export async function POST(req: Request) {
       revived = revivedRows ?? [];
     }
 
-    // 6) Insert brand-new derived rows
+    // 6) Upsert brand-new derived rows
     let inserted: any[] = [];
     if (toInsert.length > 0) {
-      const { data: insertedRows, error: insertErr } = await supabaseServer
+      const { data: insertedRows, error: upsertErr } = await supabase
         .from("shopping_list_items")
-        .insert(toInsert)
-        .select(
-          "id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity"
-        );
+        .upsert(toInsert, {
+          onConflict: "user_id,normalized_name,is_derived",
+        })
+        .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity");
 
-      if (insertErr) {
+      if (upsertErr) {
         return NextResponse.json(
-          { error: `Insert failed: ${insertErr.message}` },
+          { error: `Upsert failed: ${upsertErr.message}` },
           { status: 500 }
         );
       }
@@ -439,13 +375,11 @@ export async function POST(req: Request) {
     if (toUpdateActiveDerived.length > 0) {
       const updates = await Promise.all(
         toUpdateActiveDerived.map(async (u) => {
-          const { data, error } = await supabaseServer
+          const { data, error } = await supabase
             .from("shopping_list_items")
             .update({ quantity: u.quantity, name: u.name })
             .eq("id", u.id)
-            .select(
-              "id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity"
-            )
+            .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity")
             .single();
 
           return { ok: !error, data, error };

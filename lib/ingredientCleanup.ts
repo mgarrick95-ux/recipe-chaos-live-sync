@@ -1,4 +1,4 @@
-// lib/ingredientCleanup.ts
+﻿// lib/ingredientCleanup.ts
 
 // Turns ugly ingredient lines into nicer, more consistent ones.
 // - trims bullets
@@ -85,7 +85,7 @@ function looksLikeMeasurementContext(line: string): boolean {
 }
 
 function stripBullets(s: string): string {
-  return s.replace(/^\s*[-*•·]+\s*/, "").trim();
+  return s.replace(/^\s*[-*€¢·]+\s*/, "").trim();
 }
 
 function normalizeSpaces(s: string): string {
@@ -102,7 +102,7 @@ function convertLeadingDecimalToFraction(line: string): string {
   const value = parseFloat(m[1]);
   const rest = m[3];
 
-  // Only do this if it looks like it’s a measurement (unit present)
+  // Only do this if it looks like it's a measurement (unit present)
   const candidate = `${m[1]} ${rest}`;
   if (!looksLikeMeasurementContext(candidate)) return line;
 
@@ -137,3 +137,4 @@ export function cleanIngredientLines(input: unknown): string[] {
   }
   return out;
 }
+

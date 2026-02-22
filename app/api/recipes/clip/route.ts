@@ -1,4 +1,4 @@
-// app/api/recipes/clip/route.ts
+﻿// app/api/recipes/clip/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // URL is optional; if provided, validate it doesn’t crash URL parsing
+    // URL is optional; if provided, validate it doesn't crash URL parsing
     if (sourceUrl) {
       try {
         // eslint-disable-next-line no-new
@@ -93,3 +93,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

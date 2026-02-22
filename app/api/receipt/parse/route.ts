@@ -1,4 +1,4 @@
-// app/api/receipt/parse/route.ts
+﻿// app/api/receipt/parse/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -99,7 +99,7 @@ function parseTextToItems(raw: string): ParsedReceiptItem[] {
     let quantity = 1;
     let name = line;
 
-    const m1 = line.match(/^\s*(\d+)\s*[x×]\s*(.+)$/i);
+    const m1 = line.match(/^\s*(\d+)\s*[xÃ—]\s*(.+)$/i);
     if (m1) {
       quantity = Math.max(1, Number(m1[1]));
       name = m1[2].trim();
@@ -109,7 +109,7 @@ function parseTextToItems(raw: string): ParsedReceiptItem[] {
         quantity = Math.max(1, Number(m2[1]));
         name = m2[2].trim();
       } else {
-        const m3 = line.match(/^(.+?)\s+[x×]\s*(\d+)\s*$/i);
+        const m3 = line.match(/^(.+?)\s+[xÃ—]\s*(\d+)\s*$/i);
         if (m3) {
           name = m3[1].trim();
           quantity = Math.max(1, Number(m3[2]));
@@ -158,7 +158,7 @@ async function fileToText(file: File): Promise<{ text: string; kind: string }> {
     return { text: "", kind: "image" };
   }
 
-  // PDFs: dynamic import so pdf-parse can’t crash the module for paste-mode
+  // PDFs: dynamic import so pdf-parse can't crash the module for paste-mode
   if (mime === "application/pdf" || name.endsWith(".pdf")) {
     try {
       const mod: any = await import("pdf-parse");
@@ -201,12 +201,12 @@ export async function POST(req: Request) {
 
       const items = parseTextToItems(text);
 
-      // IMPORTANT: never 500 for “no items found”
+      // IMPORTANT: never 500 for €œno items found€
       if (items.length === 0) {
         return NextResponse.json(
           {
             items: [],
-            message: "I couldn’t find item-like lines in that text.",
+            message: "I Couldn't find item-like lines in that text.",
             debug: { mode: "json", extractedTextChars: text.length, contentType },
           },
           { status: 200 }
@@ -246,15 +246,15 @@ export async function POST(req: Request) {
 
       const joined = texts.join("\n\n").trim();
 
-      // ✅ Fully wired behavior: scanned/malformed PDFs/images return 200 + message, never 500
+      // œ… Fully wired behavior: scanned/malformed PDFs/images return 200 + message, never 500
       if (!joined) {
         const isImage = kinds.some((k) => k === "image");
         const isPdf = kinds.some((k) => k === "pdf" || k === "pdf_error");
         const msg = isImage
-          ? "That looks like an image receipt. OCR isn’t wired yet, so I can’t read it."
+          ? "That looks like an image receipt. OCR isn't wired yet, so I can't read it."
           : isPdf
-            ? "I couldn’t read text from that PDF. If it’s scanned, OCR isn’t wired yet. If it’s a normal PDF, it may be malformed."
-            : "I couldn’t read text from that file. If it’s a scan/image, OCR isn’t wired yet.";
+            ? "I Couldn't read text from that PDF. If it's scanned, OCR isn't wired yet. If it's a normal PDF, it may be malformed."
+            : "I Couldn't read text from that file. If it's a scan/image, OCR isn't wired yet.";
 
         return NextResponse.json(
           {
@@ -321,3 +321,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

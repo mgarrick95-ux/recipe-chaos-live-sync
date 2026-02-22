@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import OpenAI from "openai";
 
@@ -9,7 +9,7 @@ const openai = new OpenAI({
 // POST /api/meal-ideas
 export async function POST() {
   try {
-    // 1️⃣ Load FrostPantry items from Supabase
+    // 1ï¸ƒ£ Load FrostPantry items from Supabase
     const { data, error } = await supabase
       .from("frostpantry_items")
       .select("*")
@@ -27,15 +27,15 @@ export async function POST() {
     if (!data || data.length === 0) {
       return NextResponse.json({
         ideas:
-          "Your pantry/freezer looks empty right now. Add a few items and I’ll suggest a plan.",
+          "Your pantry/freezer looks empty right now. Add a few items and I'll suggest a plan.",
       });
     }
 
-    // 2️⃣ Build a prompt for the AI
+    // 2ï¸ƒ£ Build a prompt for the AI
     const pantryText = data
       .map(
         (item: any) =>
-          `${item.name} — Qty: ${item.quantity ?? "?"}, Meals: ${
+          `${item.name} €” Qty: ${item.quantity ?? "?"}, Meals: ${
             item.total_meals ?? "?"
           }, Category: ${item.category ?? "?"}, Stored: ${
             item.stored_on ?? "?"
@@ -44,7 +44,7 @@ export async function POST() {
       .join("\n");
 
     const prompt = `
-You are FrostPantryAI — an assistant that helps plan meals based only on what's in the user's freezer & pantry.
+You are FrostPantryAI €” an assistant that helps plan meals based only on what's in the user's freezer & pantry.
 
 Here is the user's full inventory:
 
@@ -52,14 +52,14 @@ ${pantryText}
 
 Create:
 1. A brief plan for tonight.
-2. 3–5 meal ideas using the items they should use first (urgent or soon).
+2. 3€“5 meal ideas using the items they should use first (urgent or soon).
 3. Combine leftovers if appropriate.
 4. Suggest what needs to be thawed or prepped.
 
 Keep it short, friendly, and practical. No fancy ingredients not in the list.
 `;
 
-    // 3️⃣ Ask OpenAI for ideas
+    // 3ï¸ƒ£ Ask OpenAI for ideas
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
@@ -70,7 +70,7 @@ Keep it short, friendly, and practical. No fancy ingredients not in the list.
       completion.choices?.[0]?.message?.content?.trim() ||
       "No ideas returned. Try again.";
 
-    // 4️⃣ Send ideas back
+    // 4ï¸ƒ£ Send ideas back
     return NextResponse.json({ ideas });
   } catch (err) {
     console.error(err);
@@ -80,3 +80,4 @@ Keep it short, friendly, and practical. No fancy ingredients not in the list.
     );
   }
 }
+

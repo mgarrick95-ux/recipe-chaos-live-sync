@@ -1,4 +1,4 @@
-// components/ui/PageHero.tsx
+﻿// components/ui/PageHero.tsx
 "use client";
 
 import React from "react";
@@ -88,8 +88,8 @@ export default function PageHero({
         }}
       />
 
-      {/* Existing “calm chaos” gradient layer (keeps your current vibe).
-          When TJ art arrives, we can reduce this, but it’s a good bridge. */}
+      {/* Existing €œcalm chaos€ gradient layer (keeps your current vibe).
+          When TJ art arrives, we can reduce this, but it's a good bridge. */}
       <div aria-hidden className="rc-hero__chaos pointer-events-none" />
 
       {/* Soft vignette to keep text readable */}
@@ -148,3 +148,4 @@ export default function PageHero({
     </section>
   );
 }
+

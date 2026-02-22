@@ -1,4 +1,4 @@
-// app/recipes/clip/page.tsx
+﻿// app/recipes/clip/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -43,8 +43,8 @@ function cleanTitle(input: string): string {
   s = s.replace(/[!?.]{3,}$/g, "!!");
 
   // remove obvious site separators at the end: "Title - Site" / "Title | Site"
-  // (only if it looks like a long “title glue” situation)
-  const parts = s.split(/\s[|–-]\s/).map((p) => p.trim()).filter(Boolean);
+  // (only if it looks like a long €œtitle glue€ situation)
+  const parts = s.split(/\s[|€“-]\s/).map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
     const left = parts[0];
     // if left is reasonably long, prefer it
@@ -116,7 +116,7 @@ export default function SaveFromUrlPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error || "Couldn’t preview that link.");
+      if (!res.ok) throw new Error(json?.error || "Couldn't preview that link.");
 
       const data = json as PreviewData;
 
@@ -218,7 +218,7 @@ export default function SaveFromUrlPage() {
                 <span className="inline-block align-middle ml-2 h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_30px_rgba(232,121,249,0.35)]" />
               </h1>
               <p className="mt-3 text-white/75 text-lg">
-                Paste a link. I’ll yank out the good parts. You keep control.
+                Paste a link. I'll yank out the good parts. You keep control.
               </p>
               <div className="mt-2 text-white/45 text-sm">
                 Preview first, edit anything, then save to your vault.
@@ -226,7 +226,7 @@ export default function SaveFromUrlPage() {
             </div>
 
             <Link href="/recipes" className={pill}>
-              ← Back to recipes
+              † Back to recipes
             </Link>
           </div>
         </div>
@@ -252,7 +252,7 @@ export default function SaveFromUrlPage() {
               className={`${pillPrimary} ${!canPreview || loading ? "opacity-50 cursor-not-allowed" : ""}`}
               title={!canPreview ? "Paste a link first" : "Preview this link"}
             >
-              {loading ? "Fetching…" : "Fetch it"}
+              {loading ? "Fetching€¦" : "Fetch it"}
             </button>
 
             <button
@@ -283,7 +283,7 @@ export default function SaveFromUrlPage() {
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
           {/* Left: editable fields */}
           <div className={card}>
-            <h2 className="text-2xl font-extrabold tracking-tight">What you’ll save</h2>
+            <h2 className="text-2xl font-extrabold tracking-tight">What you'll save</h2>
             <p className="mt-2 text-white/70 text-sm">
               Edit anything. Delete anything. Make it yours.
             </p>
@@ -293,7 +293,7 @@ export default function SaveFromUrlPage() {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Give it a name you’ll recognize later"
+                placeholder="Give it a name you'll recognize later"
                 className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none text-white placeholder:text-white/40 focus:ring-2 focus:ring-fuchsia-400/50"
               />
             </div>
@@ -326,7 +326,7 @@ export default function SaveFromUrlPage() {
                 value={instructionsText}
                 onChange={(e) => setInstructionsText(e.target.value)}
                 rows={10}
-                placeholder="Steps, notes, or chaos — we’ll format it."
+                placeholder="Steps, notes, or chaos €” we'll format it."
                 className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none text-white placeholder:text-white/40 focus:ring-2 focus:ring-fuchsia-400/50 resize-y"
               />
               <div className="mt-2 text-xs text-white/50">
@@ -342,7 +342,7 @@ export default function SaveFromUrlPage() {
                 className={`${pillPrimary} ${saveDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
                 title={saveDisabled ? "Preview or type a title first" : "Save this recipe"}
               >
-                {loading ? "Saving…" : "Save to vault"}
+                {loading ? "Saving€¦" : "Save to vault"}
               </button>
 
               <Link href="/recipes" className={pill}>
@@ -357,12 +357,12 @@ export default function SaveFromUrlPage() {
               Preview
             </h2>
             <p className="mt-2 text-white/70 text-sm">
-              This is how it’ll look once it lives in your Recipes.
+              This is how it'll look once it lives in your Recipes.
             </p>
 
             <div className="mt-5 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
               <div className="text-4xl font-extrabold tracking-tight">
-                {title.trim() || preview?.title || "—"}
+                {title.trim() || preview?.title || "€”"}
               </div>
 
               {preview?.source_url || url.trim() ? (
@@ -425,3 +425,4 @@ export default function SaveFromUrlPage() {
     </div>
   );
 }
+

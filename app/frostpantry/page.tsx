@@ -1,4 +1,4 @@
-// app/frostpantry/page.tsx
+﻿// app/frostpantry/page.tsx
 "use client";
 
 import type React from "react";
@@ -33,7 +33,8 @@ type FilterTab =
   | "expired"
   | "freezer"
   | "fridge"
-  | "pantry";
+  | "pantry"
+  | "duplicates";
 
 /* =========================
    Constants
@@ -117,17 +118,29 @@ function isSoonish(item: StorageItem) {
   return d <= SOONISH_BY_LOCATION[item.location];
 }
 
-function computeDefaultUseBy(
-  location: Location,
-  stored_on: string,
-  currentUseBy: string,
-  useByAuto: boolean
-) {
+function computeDefaultUseBy(location: Location, stored_on: string, currentUseBy: string, useByAuto: boolean) {
   const canAutoSet = currentUseBy.trim() === "" || useByAuto;
   if (!stored_on || !canAutoSet) return { use_by: currentUseBy, useByAuto };
 
   const days = DEFAULT_DAYS_BY_LOCATION[location];
   return { use_by: addDaysISO(stored_on, days), useByAuto: true };
+}
+
+/* =========================
+   Duplicate detection helpers
+========================= */
+
+function normalizeNameForDupe(s: string) {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[\u2019']/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeNullable(s: string | null | undefined) {
+  return (s ?? "").toString().trim();
 }
 
 /* =========================
@@ -139,7 +152,7 @@ function Chip({
   tone = "default",
 }: {
   text: string;
-  tone?: "default" | "out" | "expired";
+  tone?: "default" | "out" | "expired" | "duplicate";
 }) {
   const styles: Record<string, React.CSSProperties> = {
     default: {
@@ -157,6 +170,12 @@ function Chip({
       borderColor: "rgba(239,68,68,0.4)",
       color: "rgba(255,255,255,0.92)",
     },
+    duplicate: {
+      background: "rgba(34,211,238,0.22)",
+      borderColor: "rgba(34,211,238,0.85)",
+      color: "rgba(255,255,255,0.98)",
+      boxShadow: "0 0 0 2px rgba(34,211,238,0.14), 0 10px 24px rgba(34,211,238,0.10)",
+    },
   };
 
   return (
@@ -168,8 +187,9 @@ function Chip({
         border: "1px solid",
         padding: "6px 10px",
         fontSize: 12,
-        fontWeight: 750,
+        fontWeight: 800,
         lineHeight: 1,
+        letterSpacing: "0.01em",
         ...styles[tone],
       }}
     >
@@ -204,6 +224,39 @@ function makeDraftFromItem(it: StorageItem): EditDraft {
     notes: it.notes ?? "",
     is_leftover: Boolean(it.is_leftover),
   };
+}
+
+/* =========================
+   Duplicate review / merge helpers
+========================= */
+
+function dupeKeyForItem(it: StorageItem) {
+  const nm = normalizeNameForDupe(it.name || "");
+  return `${it.location}|${nm}`;
+}
+
+function canMergeGroup(items: StorageItem[]) {
+  if (items.length <= 1) return { ok: false, reason: "Not a duplicate group." };
+
+  const base = items[0];
+
+  const unit = normalizeNullable(base.unit);
+  const stored_on = normalizeNullable(base.stored_on);
+  const use_by = normalizeNullable(base.use_by);
+  const notes = normalizeNullable(base.notes);
+  const is_leftover = Boolean(base.is_leftover);
+  const location = base.location;
+
+  for (const it of items) {
+    if (it.location !== location) return { ok: false, reason: "Different locations." };
+    if (normalizeNullable(it.unit) !== unit) return { ok: false, reason: "Different units." };
+    if (Boolean(it.is_leftover) !== is_leftover) return { ok: false, reason: "Leftover flag differs." };
+    if (normalizeNullable(it.stored_on) !== stored_on) return { ok: false, reason: "Stored-on differs." };
+    if (normalizeNullable(it.use_by) !== use_by) return { ok: false, reason: "Use-by differs." };
+    if (normalizeNullable(it.notes) !== notes) return { ok: false, reason: "Notes differ." };
+  }
+
+  return { ok: true, reason: "" };
 }
 
 /* =========================
@@ -250,6 +303,13 @@ export default function FrostPantryPage() {
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [editUseByAuto, setEditUseByAuto] = useState<boolean>(false);
   const [editBusy, setEditBusy] = useState(false);
+
+  // Duplicate review modal state
+  const [dupeModalOpen, setDupeModalOpen] = useState(false);
+  const [dupeModalKey, setDupeModalKey] = useState<string | null>(null);
+  const [dupeKeepId, setDupeKeepId] = useState<string>("");
+  const [dupeBusy, setDupeBusy] = useState(false);
+  const [dupeError, setDupeError] = useState<string>("");
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -305,12 +365,7 @@ export default function FrostPantryPage() {
     const stored = editDraft.stored_on || "";
     if (!stored) return;
 
-    const computed = computeDefaultUseBy(
-      editDraft.location,
-      stored,
-      editDraft.use_by ?? "",
-      editUseByAuto
-    );
+    const computed = computeDefaultUseBy(editDraft.location, stored, editDraft.use_by ?? "", editUseByAuto);
 
     if (computed.use_by !== editDraft.use_by) {
       setEditDraft((prev) => (prev ? { ...prev, use_by: computed.use_by } : prev));
@@ -319,6 +374,103 @@ export default function FrostPantryPage() {
       setEditUseByAuto(computed.useByAuto);
     }
   }, [editId, editDraft?.location, editDraft?.stored_on, editDraft?.use_by, editUseByAuto]);
+
+  /* =========================
+     Duplicate maps / counts
+  ========================= */
+
+  const duplicateCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+    const keyToIds = new Map<string, string[]>();
+
+    for (const it of items) {
+      const nm = normalizeNameForDupe(it.name || "");
+      if (!nm) continue;
+      const key = `${it.location}|${nm}`;
+      const arr = keyToIds.get(key) ?? [];
+      arr.push(it.id);
+      keyToIds.set(key, arr);
+    }
+
+    for (const [, ids] of keyToIds.entries()) {
+      if (ids.length <= 1) continue;
+      for (const id of ids) counts.set(id, ids.length);
+    }
+
+    return counts;
+  }, [items]);
+
+  const duplicateGroups = useMemo(() => {
+    const keyToItems = new Map<string, StorageItem[]>();
+    for (const it of items) {
+      const nm = normalizeNameForDupe(it.name || "");
+      if (!nm) continue;
+      const key = `${it.location}|${nm}`;
+      const arr = keyToItems.get(key) ?? [];
+      arr.push(it);
+      keyToItems.set(key, arr);
+    }
+
+    const groups: Array<{ key: string; items: StorageItem[]; location: Location; name: string }> = [];
+    for (const [key, arr] of keyToItems.entries()) {
+      if (arr.length <= 1) continue;
+      const first = arr[0];
+      groups.push({
+        key,
+        items: [...arr].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || "")),
+        location: first.location,
+        name: first.name,
+      });
+    }
+
+    // stable-ish: by location then name
+    groups.sort((a, b) => {
+      const lc = (a.location || "").localeCompare(b.location || "");
+      if (lc !== 0) return lc;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+
+    return groups;
+  }, [items]);
+
+  const duplicateStats = useMemo(() => {
+    const groupCount = duplicateGroups.length;
+    let itemCount = 0;
+    for (const g of duplicateGroups) itemCount += g.items.length;
+    return { groupCount, itemCount };
+  }, [duplicateGroups]);
+
+  const mergeableGroupKeySet = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of duplicateGroups) {
+      if (canMergeGroup(g.items).ok) set.add(g.key);
+    }
+    return set;
+  }, [duplicateGroups]);
+
+  function openDuplicateModalForKey(key: string) {
+    setDupeError("");
+    setDupeModalKey(key);
+    setDupeModalOpen(true);
+
+    const g = duplicateGroups.find((x) => x.key === key);
+    const defaultKeep = g?.items?.[0]?.id || "";
+    setDupeKeepId(defaultKeep);
+  }
+
+  function closeDuplicateModal() {
+    setDupeModalOpen(false);
+    setDupeModalKey(null);
+    setDupeKeepId("");
+    setDupeBusy(false);
+    setDupeError("");
+  }
+
+  function reviewAllDuplicates() {
+    if (duplicateGroups.length === 0) return;
+    setActiveFilter("duplicates");
+    openDuplicateModalForKey(duplicateGroups[0].key);
+  }
 
   /* =========================
      Derived lists
@@ -344,10 +496,12 @@ export default function FrostPantryPage() {
         return items.filter((i) => i.location === "Fridge");
       case "pantry":
         return items.filter((i) => i.location === "Pantry");
+      case "duplicates":
+        return items.filter((i) => (duplicateCountById.get(i.id) ?? 0) > 1);
       default:
         return items;
     }
-  }, [items, activeFilter, soonishAll, expiredItems]);
+  }, [items, activeFilter, soonishAll, expiredItems, duplicateCountById]);
 
   const filteredIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
   const selectionCount = selectedIds.length;
@@ -363,9 +517,7 @@ export default function FrostPantryPage() {
   ========================= */
 
   function toggleSelected(id: string) {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function toggleSelectAllFiltered() {
@@ -395,12 +547,9 @@ export default function FrostPantryPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false))
-        throw new Error(json?.error || "Failed to update quantity");
+      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to update quantity");
 
-      setItems((prev) =>
-        prev.map((i) => (i.id === id ? { ...i, quantity: nextQty } : i))
-      );
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: nextQty } : i)));
 
       if (editId === id) {
         setEditDraft((prev) => (prev ? { ...prev, quantity: nextQty } : prev));
@@ -423,8 +572,7 @@ export default function FrostPantryPage() {
     try {
       const res = await fetch(`/api/storage-items/${id}`, { method: "DELETE" });
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false))
-        throw new Error(json?.error || "Failed to delete item");
+      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to delete item");
 
       setItems((prev) => prev.filter((i) => i.id !== id));
       setSelectedIds((prev) => prev.filter((x) => x !== id));
@@ -445,9 +593,7 @@ export default function FrostPantryPage() {
   async function deleteSelected() {
     if (selectionCount === 0) return;
 
-    const ok = confirm(
-      `Delete ${selectionCount} selected item${selectionCount === 1 ? "" : "s"}?`
-    );
+    const ok = confirm(`Delete ${selectionCount} selected item${selectionCount === 1 ? "" : "s"}?`);
     if (!ok) return;
 
     setBulkBusy(true);
@@ -460,8 +606,7 @@ export default function FrostPantryPage() {
         ids.map(async (id) => {
           const res = await fetch(`/api/storage-items/${id}`, { method: "DELETE" });
           const json = await res.json().catch(() => null);
-          if (!res.ok || (json && json.ok === false))
-            throw new Error(json?.error || `Failed to delete ${id}`);
+          if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || `Failed to delete ${id}`);
           return id;
         })
       );
@@ -486,11 +631,7 @@ export default function FrostPantryPage() {
       }
 
       if (failed.length > 0) {
-        setErrorMsg(
-          `Some deletes failed: ${failed.slice(0, 3).join(" • ")}${
-            failed.length > 3 ? " …" : ""
-          }`
-        );
+        setErrorMsg(`Some deletes failed: ${failed.slice(0, 3).join(" €¢ ")}${failed.length > 3 ? " €¦" : ""}`);
       }
     } catch (e: any) {
       console.error(e);
@@ -523,8 +664,7 @@ export default function FrostPantryPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false))
-        throw new Error(json?.error || "Failed to add item");
+      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to add item");
 
       await loadItems();
 
@@ -595,7 +735,7 @@ export default function FrostPantryPage() {
 
     const name = editDraft.name.trim();
     if (!name) {
-      setErrorMsg("Name can’t be empty.");
+      setErrorMsg("Name can't be empty.");
       return;
     }
 
@@ -621,12 +761,9 @@ export default function FrostPantryPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || (json && json.ok === false))
-        throw new Error(json?.error || "Failed to update item");
+      if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to update item");
 
-      setItems((prev) =>
-        prev.map((it) => (it.id === id ? { ...it, ...payload } : it))
-      );
+      setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...payload } : it)));
 
       cancelInlineEdit();
     } catch (e: any) {
@@ -634,6 +771,67 @@ export default function FrostPantryPage() {
       setErrorMsg(e?.message ?? "Failed to update item");
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  async function mergeDuplicateGroup(groupKey: string, keepId: string) {
+    const group = duplicateGroups.find((g) => g.key === groupKey);
+    if (!group) return;
+
+    const groupItems = group.items;
+    const keep = groupItems.find((x) => x.id === keepId) ?? groupItems[0];
+    const others = groupItems.filter((x) => x.id !== keep.id);
+
+    const eligibility = canMergeGroup(groupItems);
+    if (!eligibility.ok) {
+      setDupeError(`Can't merge: ${eligibility.reason}`);
+      return;
+    }
+
+    const total = groupItems.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    setDupeBusy(true);
+    setDupeError("");
+
+    try {
+      // 1) Update kept item's quantity
+      {
+        const res = await fetch(`/api/storage-items/${keep.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity: total }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || "Failed to update kept item");
+      }
+
+      // 2) Delete others (best-effort)
+      const results = await Promise.allSettled(
+        others.map(async (it) => {
+          const res = await fetch(`/api/storage-items/${it.id}`, { method: "DELETE" });
+          const json = await res.json().catch(() => null);
+          if (!res.ok || (json && json.ok === false)) throw new Error(json?.error || `Failed to delete ${it.id}`);
+          return it.id;
+        })
+      );
+
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+      if (failed.length > 0) {
+        setDupeError(
+          `Merged quantity, but some deletes failed: ${failed
+            .slice(0, 2)
+            .map((f) => String((f.reason as any)?.message || "unknown error"))
+            .join(" €¢ ")}${failed.length > 2 ? " €¦" : ""}`
+        );
+      }
+
+      await loadItems();
+      closeDuplicateModal();
+    } catch (e: any) {
+      console.error(e);
+      setDupeError(e?.message ?? "Merge failed");
+    } finally {
+      setDupeBusy(false);
     }
   }
 
@@ -652,18 +850,18 @@ export default function FrostPantryPage() {
     "w-full text-left rounded-xl px-4 py-3 text-sm font-semibold text-white/90 hover:bg-white/10 transition";
 
   const heroChaos = [
-    { id: "jar", emoji: "🫙" },
-    { id: "milk", emoji: "🥛" },
-    { id: "box", emoji: "📦" },
-    { id: "cheese", emoji: "🧀" },
-    { id: "can", emoji: "🥫" },
-    { id: "spark1", emoji: "✨" },
-    { id: "spark2", emoji: "✦" },
-    { id: "ice", emoji: "🧊" },
-    { id: "tag", emoji: "🏷️" },
-    { id: "bowl", emoji: "🥣" },
-    { id: "bread", emoji: "🍞" },
-    { id: "apple", emoji: "🍏" },
+    { id: "jar", emoji: "ðŸ«™" },
+    { id: "milk", emoji: "ðŸ¥›" },
+    { id: "box", emoji: "ðŸ“¦" },
+    { id: "cheese", emoji: "ðŸ§€" },
+    { id: "can", emoji: "ðŸ¥«" },
+    { id: "spark1", emoji: "œ¨" },
+    { id: "spark2", emoji: "œ¦" },
+    { id: "ice", emoji: "ðŸ§Š" },
+    { id: "tag", emoji: "ðŸ·ï¸" },
+    { id: "bowl", emoji: "ðŸ¥£" },
+    { id: "bread", emoji: "ðŸž" },
+    { id: "apple", emoji: "ðŸ" },
   ];
 
   const header = (
@@ -682,7 +880,7 @@ export default function FrostPantryPage() {
                 onClick={() => setAddOptionsOpen((v) => !v)}
                 aria-expanded={addOptionsOpen}
               >
-                Add ▾
+                Add –¾
               </button>
 
               {addOptionsOpen ? (
@@ -723,6 +921,24 @@ export default function FrostPantryPage() {
         <FilterPill label="Freezer" active={activeFilter === "freezer"} onClick={() => setActiveFilter("freezer")} base={tealPill} activeCls={tealPillActive} />
         <FilterPill label="Fridge" active={activeFilter === "fridge"} onClick={() => setActiveFilter("fridge")} base={tealPill} activeCls={tealPillActive} />
         <FilterPill label="Pantry" active={activeFilter === "pantry"} onClick={() => setActiveFilter("pantry")} base={tealPill} activeCls={tealPillActive} />
+
+        <button
+          type="button"
+          onClick={() => setActiveFilter("duplicates")}
+          disabled={duplicateStats.groupCount === 0}
+          className={[
+            activeFilter === "duplicates" ? tealPillActive : tealPill,
+            duplicateStats.groupCount === 0 ? "opacity-50 cursor-not-allowed" : "",
+          ].join(" ")}
+          title={duplicateStats.groupCount === 0 ? "No duplicates found" : `${duplicateStats.groupCount} duplicate group(s)`}
+        >
+          Duplicates
+          {duplicateStats.groupCount > 0 ? (
+            <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-extrabold ring-1 ring-white/10">
+              {duplicateStats.groupCount}
+            </span>
+          ) : null}
+        </button>
       </div>
     </div>
   );
@@ -737,12 +953,157 @@ export default function FrostPantryPage() {
   const select =
     "w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
 
-  const iconBtn =
-    "inline-flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white transition";
+  const iconBtn = "inline-flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white transition";
   const iconBtnDisabled = "opacity-50 pointer-events-none";
+
+  // €œInline duplicate UI€ only appears when the Duplicates tab is active.
+  const showDuplicateInlineUi = activeFilter === "duplicates";
+
+  const modalGroup = useMemo(() => {
+    if (!dupeModalKey) return null;
+    return duplicateGroups.find((g) => g.key === dupeModalKey) ?? null;
+  }, [dupeModalKey, duplicateGroups]);
+
+  const modalEligibility = useMemo(() => {
+    if (!modalGroup) return { ok: false, reason: "" };
+    return canMergeGroup(modalGroup.items);
+  }, [modalGroup]);
+
+  // Light banner only when user is *not* in duplicates view (keeps it from doubling up)
+  const dupBannerVisible = duplicateStats.groupCount > 0 && addPanel === "none" && activeFilter !== "duplicates";
 
   return (
     <RcPageShell header={header}>
+      {/* Duplicate review modal */}
+      {dupeModalOpen && modalGroup ? (
+        <div className="fixed inset-0 z-[999]">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => {
+              if (dupeBusy) return;
+              closeDuplicateModal();
+            }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 shadow-2xl p-6 text-white">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
+                    <span>Duplicates</span>
+                    <span className="text-white/60 text-sm font-semibold">({modalGroup.items.length})</span>
+                  </div>
+                  <div className="mt-1 text-sm text-white/60">Review first. Merge only when it's truly the same thing.</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeDuplicateModal}
+                  disabled={dupeBusy}
+                  className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2 font-semibold disabled:opacity-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+                <div className="text-sm font-bold text-white/90">Group</div>
+                <div className="mt-1 text-sm text-white/70">
+                  <span className="font-semibold text-white/85">{modalGroup.name}</span>{" "}
+                  <span className="text-white/45">€¢</span>{" "}
+                  <span className="text-white/70">{modalGroup.location}</span>
+                </div>
+
+                <div className="mt-3 grid gap-3">
+                  {modalGroup.items.map((it) => (
+                    <div
+                      key={it.id}
+                      className="rounded-2xl bg-black/20 ring-1 ring-white/10 p-4 flex items-start justify-between gap-3 flex-wrap"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-extrabold tracking-tight text-white/95">
+                          {it.quantity} {it.unit}
+                        </div>
+                        <div className="mt-1 text-xs text-white/55">
+                          {prettyDateShort(it.stored_on) ? `stored ${prettyDateShort(it.stored_on)}` : "€”"}
+                          {it.use_by ? ` €¢ use by ${prettyDateShort(it.use_by)}` : ""}
+                          {it.is_leftover ? " €¢ leftover" : ""}
+                        </div>
+                        {it.notes ? <div className="mt-2 text-xs text-white/50">{it.notes}</div> : null}
+                        <div className="mt-2 text-[11px] text-white/35 break-all">id: {it.id}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDupeKeepId(it.id)}
+                          disabled={dupeBusy}
+                          className={[
+                            "rounded-2xl px-4 py-2 text-sm font-extrabold ring-1 transition",
+                            dupeKeepId === it.id
+                              ? "bg-[rgba(34,211,238,0.25)] ring-[rgba(34,211,238,0.65)] text-white"
+                              : "bg-white/10 hover:bg-white/15 ring-white/10 text-white/85",
+                            dupeBusy ? "opacity-60" : "",
+                          ].join(" ")}
+                          title="Keep this one"
+                        >
+                          {dupeKeepId === it.id ? "Kept" : "Keep"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteItem(it.id)}
+                          disabled={dupeBusy}
+                          className="rounded-2xl bg-red-600 hover:bg-red-500 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex items-start justify-between gap-3 flex-wrap">
+                  <div className="text-xs text-white/55">
+                    {modalEligibility.ok ? (
+                      <span>Merge available (same unit, dates, notes, leftover flag).</span>
+                    ) : (
+                      <span>
+                        Merge disabled: <span className="text-white/70 font-semibold">{modalEligibility.reason}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={dupeBusy || !modalEligibility.ok || !dupeKeepId}
+                    onClick={() => {
+                      const ok = confirm(
+                        `Merge ${modalGroup.items.length} items into 1?\n\nThis will sum quantities and delete the others.`
+                      );
+                      if (!ok) return;
+                      mergeDuplicateGroup(modalGroup.key, dupeKeepId);
+                    }}
+                    className="rounded-2xl bg-[rgba(34,211,238,0.85)] hover:bg-[rgba(34,211,238,0.95)] px-5 py-3 font-extrabold text-black disabled:opacity-50 shadow-lg shadow-cyan-500/10"
+                  >
+                    {dupeBusy ? "Merging€¦" : "Merge"}
+                  </button>
+                </div>
+
+                {dupeError ? (
+                  <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-red-100 text-sm">
+                    {dupeError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 text-xs text-white/45">
+                Tip: if these look similar-but-not-the-same, keep them separate. The chip is a heads-up, not a mandate.
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Type It */}
       {addPanel === "type" ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
@@ -815,8 +1176,8 @@ export default function FrostPantryPage() {
               </div>
 
               <div className="text-xs text-white/45 pb-2">
-                Defaults: Fridge 30d • Pantry/Freezer 6mo
-                {!addUseByAuto ? <span className="text-white/40"> • manual</span> : null}
+                Defaults: Fridge 30d €¢ Pantry/Freezer 6mo
+                {!addUseByAuto ? <span className="text-white/40"> €¢ manual</span> : null}
               </div>
             </div>
 
@@ -834,7 +1195,7 @@ export default function FrostPantryPage() {
                 disabled={addBusy || !addName.trim()}
                 className="rounded-2xl bg-emerald-400/80 hover:bg-emerald-400 px-5 py-3 font-semibold text-black disabled:opacity-50 shadow-lg shadow-emerald-400/10"
               >
-                {addBusy ? "Saving…" : "Add item"}
+                {addBusy ? "Saving€¦" : "Add item"}
               </button>
             </div>
           </form>
@@ -845,9 +1206,7 @@ export default function FrostPantryPage() {
       {addPanel === "paste" ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
           <div className="text-2xl font-extrabold tracking-tight text-white">Paste It</div>
-          <div className="mt-1 text-sm text-white/60">
-            Paste receipt text. Review first. Add only what you want.
-          </div>
+          <div className="mt-1 text-sm text-white/60">Paste receipt text. Review first. Add only what you want.</div>
 
           <div className="mt-5">
             <ReceiptScanTool
@@ -867,9 +1226,7 @@ export default function FrostPantryPage() {
       {addPanel === "upload" ? (
         <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
           <div className="text-2xl font-extrabold tracking-tight text-white">Upload It</div>
-          <div className="mt-1 text-sm text-white/60">
-            Upload a receipt file. Review first. Add only what you want.
-          </div>
+          <div className="mt-1 text-sm text-white/60">Upload a receipt file. Review first. Add only what you want.</div>
 
           <div className="mt-5">
             <ReceiptScanTool
@@ -887,8 +1244,33 @@ export default function FrostPantryPage() {
 
       {/* Error */}
       {addPanel === "none" && errorMsg ? (
-        <div className="mt-8 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
-          {errorMsg}
+        <div className="mt-8 rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{errorMsg}</div>
+      ) : null}
+
+      {/* Duplicate banner (single button: Review all) */}
+      {dupBannerVisible ? (
+        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 text-white">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div className="text-sm font-extrabold tracking-tight">
+                Duplicates found{" "}
+                <span className="text-white/60 font-semibold">
+                  ({duplicateStats.groupCount} group{duplicateStats.groupCount === 1 ? "" : "s"})
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-white/55">Not a problem. Just a heads-up. Review if you want.</div>
+            </div>
+
+            <button
+              type="button"
+              onClick={reviewAllDuplicates}
+              disabled={duplicateGroups.length === 0}
+              className="rounded-2xl bg-[rgba(34,211,238,0.85)] hover:bg-[rgba(34,211,238,0.95)] px-4 py-2 text-sm font-extrabold text-black disabled:opacity-50 ring-1 ring-white/10"
+              title="Review duplicates"
+            >
+              Review all
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -947,9 +1329,9 @@ export default function FrostPantryPage() {
       <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 text-white">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm text-white/60">
-            Showing{" "}
-            <span className="text-white/80 font-semibold">{filtered.length}</span>{" "}
-            item{filtered.length === 1 ? "" : "s"}.
+            Showing <span className="text-white/80 font-semibold">{filtered.length}</span> item
+            {filtered.length === 1 ? "" : "s"}.
+            {activeFilter === "duplicates" ? <span className="ml-2 text-white/45">(duplicates view)</span> : null}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -960,13 +1342,27 @@ export default function FrostPantryPage() {
                 onChange={(e) => setShopDay(e.target.value)}
                 className="bg-transparent outline-none text-white/90 font-semibold"
               >
-                <option className="bg-[#0b1026]" value="Sunday">Sunday</option>
-                <option className="bg-[#0b1026]" value="Monday">Monday</option>
-                <option className="bg-[#0b1026]" value="Tuesday">Tuesday</option>
-                <option className="bg-[#0b1026]" value="Wednesday">Wednesday</option>
-                <option className="bg-[#0b1026]" value="Thursday">Thursday</option>
-                <option className="bg-[#0b1026]" value="Friday">Friday</option>
-                <option className="bg-[#0b1026]" value="Saturday">Saturday</option>
+                <option className="bg-[#0b1026]" value="Sunday">
+                  Sunday
+                </option>
+                <option className="bg-[#0b1026]" value="Monday">
+                  Monday
+                </option>
+                <option className="bg-[#0b1026]" value="Tuesday">
+                  Tuesday
+                </option>
+                <option className="bg-[#0b1026]" value="Wednesday">
+                  Wednesday
+                </option>
+                <option className="bg-[#0b1026]" value="Thursday">
+                  Thursday
+                </option>
+                <option className="bg-[#0b1026]" value="Friday">
+                  Friday
+                </option>
+                <option className="bg-[#0b1026]" value="Saturday">
+                  Saturday
+                </option>
               </select>
             </div>
 
@@ -979,11 +1375,7 @@ export default function FrostPantryPage() {
               {selectedAllFiltered ? "Unselect all (view)" : "Select all (view)"}
             </button>
 
-            <button
-              type="button"
-              onClick={loadItems}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
-            >
+            <button type="button" onClick={loadItems} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3">
               Refresh
             </button>
 
@@ -994,7 +1386,7 @@ export default function FrostPantryPage() {
                 disabled={bulkBusy}
                 className="rounded-2xl bg-red-600 hover:bg-red-500 px-5 py-3 disabled:opacity-60"
               >
-                {bulkBusy ? "Deleting…" : `Delete selected (${selectionCount})`}
+                {bulkBusy ? "Deleting€¦" : `Delete selected (${selectionCount})`}
               </button>
             ) : null}
           </div>
@@ -1003,12 +1395,16 @@ export default function FrostPantryPage() {
 
       {/* Main list */}
       {loading ? (
-        <div className="mt-8 text-white/70">Loading…</div>
+        <div className="mt-8 text-white/70">Loading€¦</div>
       ) : filtered.length === 0 ? (
         <div className="mt-8 text-white/55">
-          <div className="font-semibold text-white/70">Nothing here yet.</div>
+          <div className="font-semibold text-white/70">
+            {activeFilter === "duplicates" ? "No duplicates right now." : "Nothing here yet."}
+          </div>
           <div className="mt-1 text-sm text-white/50">
-            Add an item when you feel like it. Yes, even the mystery rice from 2014.
+            {activeFilter === "duplicates"
+              ? "Your pantry is behaving. Suspicious."
+              : "Add an item when you feel like it. Yes, even the mystery rice from 2014."}
           </div>
         </div>
       ) : (
@@ -1017,6 +1413,12 @@ export default function FrostPantryPage() {
             const checked = selectedSet.has(item.id);
             const expired = isExpired(item);
             const isEditing = editId === item.id;
+
+            // Duplicate UI: only when duplicates tab is active
+            const dupCount = duplicateCountById.get(item.id) ?? 0;
+            const isDuplicateRow = showDuplicateInlineUi && dupCount > 1;
+            const itemGroupKey = isDuplicateRow ? dupeKeyForItem(item) : null;
+            const mergeReady = Boolean(itemGroupKey && mergeableGroupKeySet.has(itemGroupKey));
 
             return (
               <div key={item.id} className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 text-white">
@@ -1035,6 +1437,20 @@ export default function FrostPantryPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-2xl font-extrabold tracking-tight">{item.name}</div>
 
+                        {isDuplicateRow ? (
+                          <>
+                            {mergeReady ? <Chip text="Merge ready" tone="duplicate" /> : <Chip text="Review" tone="duplicate" />}
+                            <button
+                              type="button"
+                              onClick={() => itemGroupKey && openDuplicateModalForKey(itemGroupKey)}
+                              className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-extrabold ring-1 ring-white/10"
+                              title="Review this duplicate group"
+                            >
+                              Review
+                            </button>
+                          </>
+                        ) : null}
+
                         {isOut(item) ? <Chip text="Out" tone="out" /> : null}
                         {expired ? <Chip text="Expired" tone="expired" /> : null}
                         {item.is_leftover ? <Chip text="Leftover" /> : null}
@@ -1043,15 +1459,11 @@ export default function FrostPantryPage() {
                       </div>
 
                       <div className="mt-2 text-white/55 text-sm">
-                        {prettyDateShort(item.stored_on)
-                          ? `stored ${prettyDateShort(item.stored_on)}`
-                          : "—"}
-                        {item.use_by ? ` • use by ${prettyDateShort(item.use_by)}` : ""}
+                        {prettyDateShort(item.stored_on) ? `stored ${prettyDateShort(item.stored_on)}` : "€”"}
+                        {item.use_by ? ` €¢ use by ${prettyDateShort(item.use_by)}` : ""}
                       </div>
 
-                      {item.notes ? (
-                        <div className="mt-2 text-white/50 text-sm">{item.notes}</div>
-                      ) : null}
+                      {item.notes ? <div className="mt-2 text-white/50 text-sm">{item.notes}</div> : null}
                     </div>
                   </div>
 
@@ -1063,7 +1475,7 @@ export default function FrostPantryPage() {
                         onClick={() => changeQuantity(item.id, -1)}
                         type="button"
                       >
-                        –
+                        €“
                       </button>
 
                       <div className="min-w-[120px] text-center font-semibold text-white/85">
@@ -1084,15 +1496,12 @@ export default function FrostPantryPage() {
                     <button
                       type="button"
                       onClick={() => (isEditing ? cancelInlineEdit() : startInlineEdit(item))}
-                      className={[
-                        iconBtn,
-                        (bulkBusy || editBusy || busyId === item.id) ? iconBtnDisabled : "",
-                      ].join(" ")}
+                      className={[iconBtn, bulkBusy || editBusy || busyId === item.id ? iconBtnDisabled : ""].join(" ")}
                       disabled={bulkBusy || editBusy || busyId === item.id}
                       title={isEditing ? "Close edit" : "Edit inline"}
                       aria-label={isEditing ? "Close edit" : "Edit inline"}
                     >
-                      <span className="text-xl leading-none">{isEditing ? "✖️" : "✏️"}</span>
+                      <span className="text-xl leading-none">{isEditing ? "œ–ï¸" : "œï¸"}</span>
                     </button>
 
                     {/* Icon-only delete */}
@@ -1100,7 +1509,7 @@ export default function FrostPantryPage() {
                       className={[
                         iconBtn,
                         "text-red-200 hover:text-red-100",
-                        (busyId === item.id || bulkBusy || editBusy) ? iconBtnDisabled : "",
+                        busyId === item.id || bulkBusy || editBusy ? iconBtnDisabled : "",
                       ].join(" ")}
                       disabled={busyId === item.id || bulkBusy || editBusy}
                       onClick={() => deleteItem(item.id)}
@@ -1108,7 +1517,7 @@ export default function FrostPantryPage() {
                       title="Delete"
                       aria-label="Delete"
                     >
-                      <span className="text-xl leading-none">💣</span>
+                      <span className="text-xl leading-none">ðŸ’£</span>
                     </button>
                   </div>
                 </div>
@@ -1119,9 +1528,7 @@ export default function FrostPantryPage() {
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div>
                         <div className="text-lg font-extrabold tracking-tight">Edit item</div>
-                        <div className="mt-1 text-sm text-white/60">
-                          Inline, on purpose. No teleporting to another page.
-                        </div>
+                        <div className="mt-1 text-sm text-white/60">Inline, on purpose. No teleporting to another page.</div>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1139,7 +1546,7 @@ export default function FrostPantryPage() {
                           disabled={editBusy || !editDraft.name.trim()}
                           className="rounded-2xl bg-emerald-400/80 hover:bg-emerald-400 px-4 py-2 text-sm font-extrabold text-black disabled:opacity-50 shadow-lg shadow-emerald-400/10"
                         >
-                          {editBusy ? "Saving…" : "Save"}
+                          {editBusy ? "Saving€¦" : "Save"}
                         </button>
                       </div>
                     </div>
@@ -1149,9 +1556,7 @@ export default function FrostPantryPage() {
                         <div className={fieldLabel}>Name</div>
                         <input
                           value={editDraft.name}
-                          onChange={(e) =>
-                            setEditDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))
-                          }
+                          onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
                           className={input}
                           placeholder="Item name"
                         />
@@ -1162,9 +1567,7 @@ export default function FrostPantryPage() {
                         <select
                           value={editDraft.location}
                           onChange={(e) =>
-                            setEditDraft((prev) =>
-                              prev ? { ...prev, location: e.target.value as Location } : prev
-                            )
+                            setEditDraft((prev) => (prev ? { ...prev, location: e.target.value as Location } : prev))
                           }
                           className={select}
                         >
@@ -1183,9 +1586,7 @@ export default function FrostPantryPage() {
                             value={editDraft.quantity}
                             onChange={(e) =>
                               setEditDraft((prev) =>
-                                prev
-                                  ? { ...prev, quantity: Math.max(0, Number(e.target.value) || 0) }
-                                  : prev
+                                prev ? { ...prev, quantity: Math.max(0, Number(e.target.value) || 0) } : prev
                               )
                             }
                             className={input}
@@ -1196,11 +1597,9 @@ export default function FrostPantryPage() {
                           <div className={fieldLabel}>Unit</div>
                           <input
                             value={editDraft.unit}
-                            onChange={(e) =>
-                              setEditDraft((prev) => (prev ? { ...prev, unit: e.target.value } : prev))
-                            }
+                            onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, unit: e.target.value } : prev))}
                             className={input}
-                            placeholder="bag, jar, box…"
+                            placeholder="bag, jar, box€¦"
                           />
                         </div>
                       </div>
@@ -1210,11 +1609,7 @@ export default function FrostPantryPage() {
                         <input
                           type="date"
                           value={editDraft.stored_on || ""}
-                          onChange={(e) =>
-                            setEditDraft((prev) =>
-                              prev ? { ...prev, stored_on: e.target.value } : prev
-                            )
-                          }
+                          onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, stored_on: e.target.value } : prev))}
                           className={input}
                         />
                       </div>
@@ -1232,8 +1627,8 @@ export default function FrostPantryPage() {
                           className={input}
                         />
                         <div className="mt-1 text-xs text-white/45">
-                          Defaults: Fridge 30d • Pantry/Freezer 6mo
-                          {!editUseByAuto ? <span className="text-white/40"> • manual</span> : null}
+                          Defaults: Fridge 30d €¢ Pantry/Freezer 6mo
+                          {!editUseByAuto ? <span className="text-white/40"> €¢ manual</span> : null}
                         </div>
                       </div>
 
@@ -1243,9 +1638,7 @@ export default function FrostPantryPage() {
                             type="checkbox"
                             checked={Boolean(editDraft.is_leftover)}
                             onChange={(e) =>
-                              setEditDraft((prev) =>
-                                prev ? { ...prev, is_leftover: e.target.checked } : prev
-                              )
+                              setEditDraft((prev) => (prev ? { ...prev, is_leftover: e.target.checked } : prev))
                             }
                             className="h-4 w-4 accent-emerald-400"
                           />
@@ -1257,11 +1650,9 @@ export default function FrostPantryPage() {
                         <div className={fieldLabel}>Notes</div>
                         <input
                           value={editDraft.notes}
-                          onChange={(e) =>
-                            setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))
-                          }
+                          onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
                           className={input}
-                          placeholder="Optional notes…"
+                          placeholder="Optional notes€¦"
                         />
                       </div>
                     </div>
@@ -1297,3 +1688,4 @@ function FilterPill({
     </button>
   );
 }
+

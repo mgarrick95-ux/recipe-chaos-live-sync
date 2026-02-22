@@ -1,4 +1,4 @@
-// app/meal-planning/MealPlanningClient.tsx
+﻿// app/meal-planning/MealPlanningClient.tsx
 "use client";
 
 import Link from "next/link";
@@ -239,14 +239,14 @@ const HARD_MAIN_SIGNALS = [
   "chili","stew","lasagna","spaghetti","pasta","meatloaf","casserole","fajita","fajitas",
 ];
 
-// “likely side” keywords (even if AI didn’t label it side yet)
+// €œlikely side€ keywords (even if AI didn't label it side yet)
 const LIKELY_SIDE_KEYWORDS = [
   "salad","slaw","fries","chips","rice","pilaf","mashed","potatoes","roasted","steamed","sauteed","carrots",
   "green beans","asparagus","broccoli","cucumber","corn","cornbread","bread","rolls","garlic bread","toast",
   "noodles","vegetables","veggies","beans",
 ];
 
-// explicit “not a side” keywords (hard-block even if mistakenly tagged side)
+// explicit €œnot a side€ keywords (hard-block even if mistakenly tagged side)
 const NOT_SIDE_KEYWORDS = [
   "butter","mayo","mayonnaise","dressing","vinaigrette","aioli","sauce","marinara","alfredo","pesto","gravy",
   "ketchup","mustard","relish","seasoning","rub","spice mix","brine","marinade",
@@ -860,7 +860,7 @@ export default function MealPlanningClient() {
     }
 
     if (!best) return null;
-    if (best.score < 0.35) return null; // stricter threshold to avoid “random” sides
+    if (best.score < 0.35) return null; // stricter threshold to avoid €œrandom€ sides
 
     return best.id;
   }
@@ -1058,7 +1058,7 @@ export default function MealPlanningClient() {
       return;
     }
 
-    setStatus("Adding…");
+    setStatus("Adding€¦");
     try {
       for (const m of miss.slice(0, 60)) {
         const qty = Math.max(1, m.needed - m.have);
@@ -1135,8 +1135,8 @@ export default function MealPlanningClient() {
         <div>
           <h1 className="text-4xl font-extrabold">{pageTitle}</h1>
           <div className="text-sm opacity-70">
-            Week: {weekStartStr} → {weekEndStr}
-            {status ? ` • ${status}` : ""}
+            Week: {weekStartStr} †’ {weekEndStr}
+            {status ? ` €¢ ${status}` : ""}
           </div>
         </div>
 
@@ -1147,7 +1147,7 @@ export default function MealPlanningClient() {
             className="rounded-full bg-white/6 hover:bg-white/10 px-4 py-2 text-sm font-semibold ring-1 ring-white/10 transition"
             title="Previous week"
           >
-            ←
+            †
           </button>
 
           <button
@@ -1156,7 +1156,7 @@ export default function MealPlanningClient() {
             className="rounded-full bg-white/6 hover:bg-white/10 px-4 py-2 text-sm font-semibold ring-1 ring-white/10 transition"
             title="Next week"
           >
-            →
+            †’
           </button>
 
           <button
@@ -1165,7 +1165,7 @@ export default function MealPlanningClient() {
             disabled={loadingRecipes || recipes.length === 0 || saving || planBusy}
             className="rounded-full bg-emerald-400/80 hover:bg-emerald-400 px-5 py-3 text-sm font-extrabold text-black disabled:opacity-50 ring-1 ring-white/10 transition shadow-lg shadow-emerald-400/10"
           >
-            {saving || planBusy ? "Working…" : "Do it for me"}
+            {saving || planBusy ? "Working€¦" : "Do it for me"}
           </button>
 
           <button
@@ -1213,7 +1213,7 @@ export default function MealPlanningClient() {
             className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
             title="Add missing ingredients to shopping list"
           >
-            Add → Shopping list
+            Add †’ Shopping list
           </button>
 
           <button
@@ -1238,7 +1238,7 @@ export default function MealPlanningClient() {
                 </div>
               </div>
               <button type="button" onClick={loadStorage} className={tinyBtn} disabled={loadingStorage}>
-                {loadingStorage ? "Refreshing…" : "Refresh pantry"}
+                {loadingStorage ? "Refreshing€¦" : "Refresh pantry"}
               </button>
             </div>
 
@@ -1259,7 +1259,7 @@ export default function MealPlanningClient() {
                         <div className="min-w-0">
                           <div className="font-semibold text-white/85 truncate">{m.matchedName || m.display}</div>
                           <div className="text-xs text-white/55">
-                            need {m.needed} • have {m.have}
+                            need {m.needed} €¢ have {m.have}
                           </div>
                         </div>
                         <div className="text-xs text-white/55 shrink-0">+{Math.max(1, m.needed - m.have)}</div>
@@ -1267,12 +1267,12 @@ export default function MealPlanningClient() {
                     ))}
 
                     {pantryProjection.missing.length > 8 ? (
-                      <div className="text-xs text-white/45 mt-2">…and {pantryProjection.missing.length - 8} more</div>
+                      <div className="text-xs text-white/45 mt-2">€¦and {pantryProjection.missing.length - 8} more</div>
                     ) : null}
                   </div>
                 ) : (
                   <div className="mt-4 text-sm text-white/70">
-                    No obvious gaps. (Either you’re stocked, or the pantry isn’t fully tracked yet.)
+                    No obvious gaps. (Either you're stocked, or the pantry isn't fully tracked yet.)
                   </div>
                 )}
               </>
@@ -1282,17 +1282,17 @@ export default function MealPlanningClient() {
           <div className={[box, "p-5 text-white"].join(" ")}>
             <div className="text-lg font-extrabold tracking-tight">Side rules (smarter)</div>
             <div className="mt-2 text-sm text-white/65 space-y-2">
-              <div>• Butter/sauce/dressing/marinade/etc are hard-blocked as sides.</div>
-              <div>• Breakfast mains only accept breakfast-ish sides (fruit/yogurt/toast/etc).</div>
-              <div>• Side-like “mains” (baked potato, etc) won’t get a “side of a side”.</div>
-              <div>• If no recipe side fits, you still get a sensible non-recipe suggestion.</div>
+              <div>€¢ Butter/sauce/dressing/marinade/etc are hard-blocked as sides.</div>
+              <div>€¢ Breakfast mains only accept breakfast-ish sides (fruit/yogurt/toast/etc).</div>
+              <div>€¢ Side-like €œmains€ (baked potato, etc) won't get a €œside of a side€.</div>
+              <div>€¢ If no recipe side fits, you still get a sensible non-recipe suggestion.</div>
             </div>
           </div>
 
           <div className={[box, "p-5 text-white"].join(" ")}>
             <div className="text-lg font-extrabold tracking-tight">Tip</div>
             <div className="mt-2 text-sm text-white/65">
-              Lock the meals you want, then spam “Regenerate (unlocked)” until the chaos behaves.
+              Lock the meals you want, then spam €œRegenerate (unlocked)€ until the chaos behaves.
             </div>
           </div>
         </div>
@@ -1304,7 +1304,7 @@ export default function MealPlanningClient() {
     <RcPageShell header={header}>
       <div className="mt-8">
         {loadingRecipes ? (
-          <div className="text-white/70">Loading…</div>
+          <div className="text-white/70">Loading€¦</div>
         ) : recipesError ? (
           <div className="text-red-400">{recipesError}</div>
         ) : (
@@ -1349,7 +1349,7 @@ export default function MealPlanningClient() {
 
                       {uncertainMain ? (
                         <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-extrabold text-white ring-1 ring-white/10">
-                          Not sure what this is 🤨
+                          Not sure what this is ðŸ¤¨
                         </span>
                       ) : null}
                     </div>
@@ -1384,7 +1384,7 @@ export default function MealPlanningClient() {
                         className="rounded-full bg-emerald-400/20 hover:bg-emerald-400/25 px-4 py-2 text-xs font-extrabold ring-1 ring-white/10 transition disabled:opacity-50"
                         title="Mark cooked (and try to decrement pantry)"
                       >
-                        {slot.cooked ? "Cooked ✓" : "Mark cooked"}
+                        {slot.cooked ? "Cooked œ“" : "Mark cooked"}
                       </button>
 
                       {main ? (
@@ -1415,7 +1415,7 @@ export default function MealPlanningClient() {
                     }}
                     className="mt-3 w-full rounded-2xl bg-black/20 p-3 text-white ring-1 ring-white/10"
                   >
-                    <option value="">— none —</option>
+                    <option value="">€” none €”</option>
 
                     <optgroup label="Good mains (auto-picked)">
                       {recipes
@@ -1430,7 +1430,7 @@ export default function MealPlanningClient() {
                         })
                         .map((rec) => (
                           <option key={rec.id} value={rec.id}>
-                            {rec.favorite ? "★ " : ""}
+                            {rec.favorite ? "˜… " : ""}
                             {rec.title}
                           </option>
                         ))}
@@ -1439,7 +1439,7 @@ export default function MealPlanningClient() {
                     <optgroup label="Everything else (allowed, but not auto-picked)">
                       {recipes.map((rec) => (
                         <option key={rec.id} value={rec.id}>
-                          {rec.favorite ? "★ " : ""}
+                          {rec.favorite ? "˜… " : ""}
                           {rec.title}
                         </option>
                       ))}
@@ -1454,7 +1454,7 @@ export default function MealPlanningClient() {
                           {side.title}
                         </Link>
                       ) : (
-                        <span className="text-white/50">— none —</span>
+                        <span className="text-white/50">€” none €”</span>
                       )
                     ) : (
                       <span className="text-white/50">Pick a main first</span>
@@ -1478,14 +1478,14 @@ export default function MealPlanningClient() {
                         return (
                           <>
                             Classified as <span className="text-white/65 font-semibold">{shown}</span>
-                            {src ? <span className="text-white/40"> • {src}</span> : null}
+                            {src ? <span className="text-white/40"> €¢ {src}</span> : null}
                           </>
                         );
                       })()}
                       {mainP.vibes.size > 0 ? (
                         <>
                           {" "}
-                          • vibe: <span className="text-white/55">{Array.from(mainP.vibes).slice(0, 3).join(", ")}</span>
+                          €¢ vibe: <span className="text-white/55">{Array.from(mainP.vibes).slice(0, 3).join(", ")}</span>
                         </>
                       ) : null}
                     </div>
@@ -1499,3 +1499,4 @@ export default function MealPlanningClient() {
     </RcPageShell>
   );
 }
+

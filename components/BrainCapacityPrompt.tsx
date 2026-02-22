@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import { useUIPrefs } from "@/components/UIPrefsProvider";
@@ -8,7 +8,7 @@ const options: Array<{ value: BrainCapacity; label: string; feedback: string }> 
   { value: "very_little", label: "Very little", feedback: "Easy mode activated!" },
   { value: "some", label: "Some", feedback: "Low-power mode on." },
   { value: "normal", label: "Normal", feedback: "Business as usual." },
-  { value: "extra", label: "Extra", feedback: "Spicy mode enabled — tell me if it’s too much." },
+  { value: "extra", label: "Extra", feedback: "Spicy mode enabled €” tell me if it's too much." },
 ];
 
 export default function BrainCapacityPrompt() {
@@ -16,7 +16,7 @@ export default function BrainCapacityPrompt() {
 
   if (!shouldPromptBrain) return null;
 
-  // If Reduce Chatter is on, don’t prompt (it’s noise).
+  // If Reduce Chatter is on, don't prompt (it's noise).
   if (prefs.reduceChatter) return null;
 
   return (
@@ -41,3 +41,4 @@ export default function BrainCapacityPrompt() {
     </div>
   );
 }
+

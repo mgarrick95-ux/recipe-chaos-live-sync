@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReceiptScanTool from "@/components/frostpantry/ReceiptScanTool";
@@ -17,7 +17,7 @@ export default function InlineReceiptScanner({
   const [open, setOpen] = useState(defaultOpen);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // If it opens, gently scroll it into view (helps when it’s below the fold)
+  // If it opens, gently scroll it into view (helps when it's below the fold)
   useEffect(() => {
     if (!open) return;
     const t = window.setTimeout(() => {
@@ -64,7 +64,7 @@ export default function InlineReceiptScanner({
               className={`${btnBase} ${btnOpen}`}
               onClick={() => {
                 setOpen(false);
-                // small “no drama” close; no other side effects
+                // small €œno drama€ close; no other side effects
               }}
             >
               Hide
@@ -82,3 +82,4 @@ export default function InlineReceiptScanner({
     </div>
   );
 }
+

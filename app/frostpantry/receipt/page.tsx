@@ -1,4 +1,4 @@
-// app/frostpantry/receipt/page.tsx
+﻿// app/frostpantry/receipt/page.tsx
 
 import Link from "next/link";
 import PageHero from "@/components/ui/PageHero";
@@ -9,13 +9,13 @@ export default function FrostPantryReceiptPage() {
     <div className="min-h-screen bg-[#050816] text-white">
       <PageHero
         title="Pantry"
-        subtitle="Let’s see what you have."
+        subtitle="Let's see what you have."
         action={
           <Link
             href="/frostpantry"
             className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10"
           >
-            ← Back
+            † Back
           </Link>
         }
         chaosTheme="pantry"
@@ -38,3 +38,4 @@ export default function FrostPantryReceiptPage() {
     </div>
   );
 }
+

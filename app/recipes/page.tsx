@@ -1,4 +1,4 @@
-// app/recipes/page.tsx
+﻿// app/recipes/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -112,7 +112,7 @@ function buildCloseMatchTitle(details: Array<any>) {
 
     if (!ing || !match) return "";
     const kindLabel = kind === "containment" || kind === "token" ? "similar" : kind || "similar";
-    return `${ing} → ${match} (${kindLabel})`;
+    return `${ing} †’ ${match} (${kindLabel})`;
   });
 
   const shown = lines.filter(Boolean);
@@ -379,14 +379,14 @@ export default function RecipesPage() {
           />
         }
         stickers={[
-          { emoji: "📖", top: "16%", left: "74%", size: "66px", rotate: "10deg", opacity: "0.95" },
-          { emoji: "🧄", top: "44%", left: "90%", size: "54px", rotate: "-12deg", opacity: "0.85" },
-          { emoji: "🥕", top: "60%", left: "82%", size: "60px", rotate: "8deg", opacity: "0.9" },
+          { emoji: "ðŸ“–", top: "16%", left: "74%", size: "66px", rotate: "10deg", opacity: "0.95" },
+          { emoji: "ðŸ§„", top: "44%", left: "90%", size: "54px", rotate: "-12deg", opacity: "0.85" },
+          { emoji: "ðŸ¥•", top: "60%", left: "82%", size: "60px", rotate: "8deg", opacity: "0.9" },
         ]}
       >
         <div className="flex items-center gap-2 flex-wrap">
           <button type="button" onClick={() => setTab("mine")} className={tab === "mine" ? tabPillActive : tabPill}>
-            <span className="text-lg">📚</span>
+            <span className="text-lg">ðŸ“š</span>
             <span className="flex flex-col items-start leading-tight">
               <span>My Recipes</span>
               <span
@@ -404,7 +404,7 @@ export default function RecipesPage() {
             onClick={() => setTab("suggested")}
             className={tab === "suggested" ? tabPillActive : tabPill}
           >
-            <span className="text-lg">✨</span>
+            <span className="text-lg">œ¨</span>
             <span className="flex flex-col items-start leading-tight">
               <span className="flex items-center gap-2">
                 Suggested{" "}
@@ -436,7 +436,7 @@ export default function RecipesPage() {
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search by ingredient, mood, or vague intention…"
+                    placeholder="Search by ingredient, mood, or vague intention€¦"
                     className="w-[320px] max-w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
                   <div className="text-xs text-white/45">Searches titles, ingredients, and instructions. No judgment.</div>
@@ -449,8 +449,8 @@ export default function RecipesPage() {
                 >
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
-                  <option value="az">A → Z</option>
-                  <option value="za">Z → A</option>
+                  <option value="az">A †’ Z</option>
+                  <option value="za">Z †’ A</option>
                 </select>
 
                 <button type="button" onClick={resetFilters} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3" title="Reset filters">
@@ -478,11 +478,11 @@ export default function RecipesPage() {
                       disabled={loadingStorage || Boolean(storageError)}
                       className="h-4 w-4 accent-[var(--rc-accent)] disabled:opacity-50"
                     />
-                    Use what you’ve got
+                    Use what you've got
                   </label>
 
                   {noBuyOnly && !loadingStorage && !storageError ? (
-                    <div className="text-xs text-white/55 pl-6">Pantry’s got this.</div>
+                    <div className="text-xs text-white/55 pl-6">Pantry's got this.</div>
                   ) : null}
 
                   {storageError ? <div className="text-xs text-white/40 pl-6">(Needs Pantry &amp; Freezer loaded)</div> : null}
@@ -492,7 +492,7 @@ export default function RecipesPage() {
 
             <div className="mt-8">
               {loadingRecipes ? (
-                <div className="text-white/70">Loading…</div>
+                <div className="text-white/70">Loading€¦</div>
               ) : recipesError ? (
                 <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{recipesError}</div>
               ) : filtered.length === 0 ? (
@@ -554,7 +554,7 @@ export default function RecipesPage() {
                           title={r.favorite ? "Unfavorite" : "Favorite"}
                           aria-label={r.favorite ? "Unfavorite" : "Favorite"}
                         >
-                          {r.favorite ? "⭐" : "☆"}
+                          {r.favorite ? "­" : "˜†"}
                         </button>
 
                         <Link href={`/recipes/${r.id}`} className="block">
@@ -591,7 +591,7 @@ export default function RecipesPage() {
                                   className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75 ring-1 ring-white/10"
                                   title={closeTitle || `${softHaveCount} similar match(es)`}
                                 >
-                                  ≈ Similar {softHaveCount}
+                                  ‰ˆ Similar {softHaveCount}
                                 </span>
                               ) : null}
                             </div>
@@ -652,7 +652,7 @@ export default function RecipesPage() {
                   className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10"
                   title="Shuffle the suggestions"
                 >
-                  🔄 New batch
+                  ðŸ”„ New batch
                 </button>
               </div>
 
@@ -664,7 +664,7 @@ export default function RecipesPage() {
                   <input
                     value={avoidRaw}
                     onChange={(e) => setAvoidRaw(e.target.value)}
-                    placeholder="kale, chickpeas, capers…"
+                    placeholder="kale, chickpeas, capers€¦"
                     className="mt-3 w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
 
@@ -672,7 +672,7 @@ export default function RecipesPage() {
                 </div>
 
                 <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">What it’s learning right now</div>
+                  <div className="text-sm font-bold text-white/90">What it's learning right now</div>
                   <div className="mt-2 text-xs text-white/60">We rank suggestions using your recipe tags + favorites.</div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -742,3 +742,4 @@ export default function RecipesPage() {
     </div>
   );
 }
+

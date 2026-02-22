@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type Course =
@@ -110,7 +110,7 @@ const COMPONENT_TITLE_WORDS = [
   "filling",
 ];
 
-// “butter” is tricky: butter can be ingredient, or can be a compound butter recipe (component).
+// €œbutter€ is tricky: butter can be ingredient, or can be a compound butter recipe (component).
 const BUTTER_COMPONENT_TITLE_WORDS = ["garlic butter", "compound butter", "herb butter"];
 
 const HARD_MAIN_TITLE_SIGNALS = [
@@ -249,7 +249,7 @@ function classifyRecipe(titleRaw: string, ingredientsRaw?: string, instructionsR
   }
 
   // 4) Hard mains should win BEFORE drink.
-  // Prevents tacos/parmesan/spring rolls/shepherd’s pie from becoming drink because of “wine” in ingredients.
+  // Prevents tacos/parmesan/spring rolls/shepherd's pie from becoming drink because of €œwine€ in ingredients.
   if (scoreHits(title, HARD_MAIN_TITLE_SIGNALS) >= 1) {
     add("hard-main-title-signal");
     return { course: "main" as Course, reasons };
@@ -367,3 +367,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }
+

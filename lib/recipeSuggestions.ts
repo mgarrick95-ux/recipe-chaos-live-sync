@@ -1,4 +1,4 @@
-// lib/recipeSuggestions.ts
+﻿// lib/recipeSuggestions.ts
 type AnyRecipe = Record<string, any>;
 
 export type SuggestedRecipe = {
@@ -83,7 +83,7 @@ function buildStubPool(preferredTags: string[]): SuggestedRecipe[] {
     {
       id: "stub-nourl-1",
       title: "Big-Batch Beef Chili (Freezer Friendly)",
-      description: "Hearty chili you’ll happily eat twice (or five times).",
+      description: "Hearty chili you'll happily eat twice (or five times).",
       tags: ["beef", "batch", "freezer", "comfort"],
       ingredients: ["ground beef", "onion", "beans", "tomato", "chili powder"],
       source_url: null,
@@ -101,7 +101,7 @@ function buildStubPool(preferredTags: string[]): SuggestedRecipe[] {
     {
       id: "stub-nourl-3",
       title: "Meatloaf + Mashed Potatoes Night",
-      description: "Comfort food that behaves. Leftovers do the next day’s job.",
+      description: "Comfort food that behaves. Leftovers do the next day's job.",
       tags: ["beef", "comfort", "leftovers"],
       ingredients: ["ground beef", "egg", "breadcrumbs (GF if needed)", "ketchup", "potatoes"],
       source_url: null,
@@ -212,3 +212,4 @@ export function generateSuggestedRecipes(opts: {
     suggestions: shuffled.slice(0, limit),
   };
 }
+

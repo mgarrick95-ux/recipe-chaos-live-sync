@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 
@@ -23,7 +23,7 @@ export default function AddRecipeHubPage() {
 
           <div className="flex items-center gap-3">
             <Link href="/recipes" className={pill}>
-              ← Back to Recipes
+              † Back to Recipes
             </Link>
           </div>
         </div>
@@ -61,9 +61,10 @@ export default function AddRecipeHubPage() {
         </div>
 
         <div className="mt-10 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6 text-white/70">
-          Tip: if you’re tired, use <b>Save from URL</b> or <b>Photo</b> and clean it up later.
+          Tip: if you're tired, use <b>Save from URL</b> or <b>Photo</b> and clean it up later.
         </div>
       </div>
     </div>
   );
 }
+

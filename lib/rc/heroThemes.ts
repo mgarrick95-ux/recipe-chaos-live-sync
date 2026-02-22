@@ -1,4 +1,4 @@
-// lib/rc/heroThemes.ts
+﻿// lib/rc/heroThemes.ts
 import type { RcChaosObject, RcHeroTheme } from "@/components/rc/RcPageHero";
 
 export type RcPageHeroPreset = {
@@ -10,7 +10,7 @@ export type RcPageHeroPreset = {
 
 export const frostPantryHero: RcPageHeroPreset = {
   title: "Pantry & Freezer",
-  tagline: "What’s around, more or less.",
+  tagline: "What's around, more or less.",
   theme: {
     backgroundClass: "bg-gradient-to-br from-[#0B1026] via-[#0A0F22] to-[#080B18]",
     glowClass: "bg-fuchsia-500/12",
@@ -18,14 +18,14 @@ export const frostPantryHero: RcPageHeroPreset = {
     accentDotClass: "bg-fuchsia-400",
   },
   chaos: [
-    { id: "can", emoji: "🥫", depth: 2 },
-    { id: "ice", emoji: "🧊", depth: 3 },
-    { id: "bread", emoji: "🍞", depth: 1 },
-    { id: "cheese", emoji: "🧀", depth: 2 },
-    { id: "milk", emoji: "🥛", depth: 1 },
-    { id: "jar", emoji: "🫙", depth: 2 },
-    { id: "label", emoji: "🏷️", depth: 1 },
-    { id: "spark", emoji: "✨", depth: 3 },
+    { id: "can", emoji: "ðŸ¥«", depth: 2 },
+    { id: "ice", emoji: "ðŸ§Š", depth: 3 },
+    { id: "bread", emoji: "ðŸž", depth: 1 },
+    { id: "cheese", emoji: "ðŸ§€", depth: 2 },
+    { id: "milk", emoji: "ðŸ¥›", depth: 1 },
+    { id: "jar", emoji: "ðŸ«™", depth: 2 },
+    { id: "label", emoji: "ðŸ·ï¸", depth: 1 },
+    { id: "spark", emoji: "œ¨", depth: 3 },
   ],
 };
 
@@ -40,11 +40,12 @@ export const recipesHero: RcPageHeroPreset = {
     accentDotClass: "bg-fuchsia-400",
   },
   chaos: [
-    { id: "carrot", emoji: "🥕", depth: 2 },
-    { id: "garlic", emoji: "🧄", depth: 3 },
-    { id: "book", emoji: "📖", depth: 1 },
-    { id: "knife", emoji: "🔪", depth: 2 },
-    { id: "bowl", emoji: "🥣", depth: 1 },
-    { id: "spark", emoji: "✨", depth: 3 },
+    { id: "carrot", emoji: "ðŸ¥•", depth: 2 },
+    { id: "garlic", emoji: "ðŸ§„", depth: 3 },
+    { id: "book", emoji: "ðŸ“–", depth: 1 },
+    { id: "knife", emoji: "ðŸ”ª", depth: 2 },
+    { id: "bowl", emoji: "ðŸ¥£", depth: 1 },
+    { id: "spark", emoji: "œ¨", depth: 3 },
   ],
 };
+
