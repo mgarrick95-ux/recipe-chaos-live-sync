@@ -293,7 +293,7 @@ type FetchAttempt = {
 };
 
 const DESKTOP_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
+  "Mozilla/5.0 (compatible; RecipeChaos/1.0; +https://localhost)";
 
 async function fetchDirect(url: string): Promise<FetchAttempt> {
   const res = await fetch(url, {
@@ -384,13 +384,8 @@ export async function POST(req: Request) {
 
     const url = sanitizeUrl(rawUrl);
     const host = hostFromUrl(url) || null;
-
     let direct: FetchAttempt;
-    if (host && host.includes("allrecipes.com")) {
-      direct = await fetchFallback(url);
-    } else {
-      direct = await fetchDirect(url);
-    }
+    direct = await fetchDirect(url);
 
     let html = direct.body;
     let usedMode: "direct" | "fallback" = direct.mode;
