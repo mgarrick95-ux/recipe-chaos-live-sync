@@ -1,4 +1,4 @@
-﻿// components/frostpantry/ReceiptScanTool.tsx
+// components/frostpantry/ReceiptScanTool.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -62,9 +62,9 @@ function normalizePurchaseItemName(raw: string) {
   let s = cleanName(raw || "");
   if (!s) return s;
 
-  const trimTail = (v: string) => v.replace(/[,\-€“€”:\s]+$/g, "").trim();
+  const trimTail = (v: string) => v.replace(/[,\-"":\s]+$/g, "").trim();
 
-  // Strip €œsold in ...€ tail
+  // Strip "sold in ..." tail
   s = s.replace(/\s*,?\s*sold in\s+(singles?|each|bulk|bunch(es)?|bags?)\b.*$/i, "");
   s = trimTail(s);
 
@@ -84,7 +84,7 @@ function normalizePurchaseItemName(raw: string) {
   s = s.replace(/\s*\b\d+(\.\d+)?(kg|g|lb|lbs|oz|ml|l)\b\.?\s*$/i, "");
   s = trimTail(s);
 
-  // Strip €œ6 x 710 mL€ tail style
+  // Strip "6 x 710 mL" tail style
   s = s.replace(
     /\s*,?\s*\d+(\.\d+)?\s*[xÃ—]\s*\d*(\.\d+)?\s*(kg|g|lb|lbs|oz|ml|l|liters?|litres?)\b\.?\s*$/i,
     ""
@@ -95,7 +95,7 @@ function normalizePurchaseItemName(raw: string) {
   s = s.replace(/\s*,?\s*\d+\s*(pack|pk|ct|count)\b\.?\s*$/i, "");
   s = trimTail(s);
 
-  // Strip trailing €œ6 x€
+  // Strip trailing "6 x"
   s = s.replace(/\s*,?\s*\d+\s*[xÃ—]\s*$/i, "");
   s = trimTail(s);
 
@@ -129,26 +129,26 @@ function normalizePurchaseItemName(raw: string) {
     if (nextParts.length > 0) s = nextParts.join(", ");
   }
 
-  // Drop trailing paren-weight like €œ(140 gummies)€
+  // Drop trailing paren-weight like "(140 gummies)"
   if (/\(\s*\d+[^)]*\)\s*$/i.test(s)) {
     s = s.replace(/\s*\(\s*\d+[^)]*\)\s*$/i, "");
     s = trimTail(s);
   }
 
-  // œ… De-brand + reduce to useful name (but not too generic)
+  // ... De-brand + reduce to useful name (but not too generic)
   s = toCommonName(s);
 
   return s || cleanName(raw || "");
 }
 
 /**
- * Convert receipt product titles into €œwhat a human would call it€,
+ * Convert receipt product titles into "what a human would call it",
  * BUT keep *signal* for snack categories (chips/candy/crackers).
  *
  * Examples:
- * - "Breton Gluten Free Garden Vegetable Crackers, Dare" -> "Breton Crackers €” Gluten Free"
- * - "Chef Boyardee Beefaroni Pasta..." -> "Beefaroni"
- * - "Dare Juicee Beans Candy, Jelly Beans" -> "Dare Juicee Beans Jelly Beans"
+ * - "Breton Gluten Free Garden Vegetable Crackers, Dare" → "Breton Crackers " Gluten Free"
+ * - "Chef Boyardee Beefaroni Pasta..." → "Beefaroni"
+ * - "Dare Juicee Beans Candy, Jelly Beans" → "Dare Juicee Beans Jelly Beans"
  */
 function toCommonName(input: string) {
   let s = cleanName(input || "");
@@ -165,7 +165,7 @@ function toCommonName(input: string) {
 
   const hasGF = /\bgluten\s*free\b|\bgf\b/i.test(s);
 
-  // classify as €œsnack-ish€ where brand helps you differentiate
+  // classify as "snack-ish" where brand helps you differentiate
   const isSnack =
     /\b(crackers?|chips?|candy|chocolate|cookies?|pretzels?|snacks?)\b/i.test(s);
 
@@ -217,7 +217,7 @@ function toCommonName(input: string) {
   // Work on the first chunk; receipts love comma soup
   const firstChunk = s.split(",")[0]?.trim() || s;
 
-  // phrase wins (most €œhuman€)
+  // phrase wins (most "human")
   const phraseRules: Array<{ test: RegExp; out: string }> = [
     { test: /\bsour cream\b/i, out: "Sour cream" },
     { test: /\bjelly beans\b/i, out: "Jelly beans" },
@@ -231,7 +231,7 @@ function toCommonName(input: string) {
 
   let core: string | null = null;
 
-  // For snack items, try to keep €œwhat kind€ (not just €œcandy€)
+  // For snack items, try to keep "what kind" (not just "candy")
   if (isSnack) {
     // If line contains a specific candy/snack phrase, use it (and allow stacking)
     const picks: string[] = [];
@@ -253,7 +253,7 @@ function toCommonName(input: string) {
       // If that made it empty, then keep the category (better than blank)
       if (!tmp) tmp = firstChunk.trim();
 
-      // shorten very long snack names but keep 2€“6 words so it's identifiable
+      // shorten very long snack names but keep 2"6 words so it's identifiable
       const w = tmp.split(" ").filter(Boolean);
       if (w.length > 7) tmp = w.slice(0, 7).join(" ");
 
@@ -316,9 +316,9 @@ function toCommonName(input: string) {
   }
 
   // Gluten Free formatting:
-  // You asked for €œBreton Crackers - Gluten Free€ style (suffix is clearer in lists).
+  // You asked for "Breton Crackers - Gluten Free" style (suffix is clearer in lists).
   if (hasGF) {
-    if (!/gluten[-\s]?free/i.test(out)) out = `${out} €” Gluten Free`;
+    if (!/gluten[-\s]?free/i.test(out)) out = `${out} " Gluten Free`;
   }
 
   // Last safety: don't return a single ultra-generic word when we can avoid it
@@ -328,7 +328,7 @@ function toCommonName(input: string) {
     if (w.length >= 2) out = capitalize(w.slice(0, Math.min(5, w.length)).join(" "));
     if (keptBrand && !out.toLowerCase().startsWith(keptBrand.toLowerCase()))
       out = `${keptBrand} ${out}`.trim();
-    if (hasGF && !/gluten[-\s]?free/i.test(out)) out = `${out} €” Gluten Free`;
+    if (hasGF && !/gluten[-\s]?free/i.test(out)) out = `${out} " Gluten Free`;
   }
 
   return out.trim();
@@ -548,14 +548,14 @@ export default function ReceiptScanTool({
     if (list.length > 0) {
       const first = list[0];
       const loc = safeString((first as any)?.location) || "Somewhere";
-      label = `${loc}${typeof (first as any)?.quantity === "number" ? ` €¢ ${(first as any).quantity}` : ""}${
+      label = `${loc}${typeof (first as any)?.quantity === "number" ? `  -  ${(first as any).quantity}` : ""}${
         safeString((first as any)?.unit) ? ` ${(first as any).unit}` : ""
       }`;
     }
 
     if (list.length > 0 && unit) {
       const anyCompatible = list.some((s) => unitsCompatible(unit, safeString((s as any)?.unit)));
-      if (!anyCompatible) label = label ? `${label} €¢ (unit differs)` : "(unit differs)";
+      if (!anyCompatible) label = label ? `${label}  -  (unit differs)` : "(unit differs)";
     }
 
     return {
@@ -826,7 +826,7 @@ export default function ReceiptScanTool({
       {activeMode === "type" ? (
         <>
           <div className="text-sm font-semibold text-white/85">Type items (one per line)</div>
-          <div className="mt-2 text-xs text-white/55">Tip: you can do €œkale 2€ or €œkale x2€.</div>
+          <div className="mt-2 text-xs text-white/55">Tip: you can do "kale 2" or "kale x2".</div>
           <textarea
             value={typeText}
             onChange={(e) => setTypeText(e.target.value)}
@@ -840,7 +840,7 @@ export default function ReceiptScanTool({
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder="Paste receipt text here€¦"
+            placeholder="Paste receipt text here..."
             className="mt-3 w-full min-h-[160px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
           />
         </>
@@ -862,7 +862,7 @@ export default function ReceiptScanTool({
               {files.length} file(s):{" "}
               <span className="text-white/75">
                 {files.map((f) => f.name).slice(0, 3).join(", ")}
-                {files.length > 3 ? "€¦" : ""}
+                {files.length > 3 ? "..." : ""}
               </span>
             </div>
           ) : null}
@@ -888,7 +888,7 @@ export default function ReceiptScanTool({
             runParse();
           }}
         >
-          {busy ? "Working€¦" : primaryLabel}
+          {busy ? "Working..." : primaryLabel}
         </button>
 
         <button type="button" className={btn} onClick={clearAll} disabled={busy}>
@@ -900,7 +900,7 @@ export default function ReceiptScanTool({
         <div className="mt-6">
           <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="text-sm text-white/70">
-              {checkedCount} selected €¢ {rows.length} total
+              {checkedCount} selected  -  {rows.length} total
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -995,4 +995,8 @@ export default function ReceiptScanTool({
     </div>
   );
 }
+
+
+
+
 

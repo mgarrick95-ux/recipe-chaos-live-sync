@@ -15,7 +15,7 @@ function startOfWeekMonday(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   const day = d.getDay(); // 0 Sun ... 6 Sat
-  const diff = (day + 6) % 7; // Mon->0, Tue->1 ... Sun->6
+  const diff = (day + 6) % 7; // Mon→0, Tue→1 ... Sun→6
   d.setDate(d.getDate() - diff);
   return d;
 }
@@ -170,3 +170,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
   }
 }
+
+

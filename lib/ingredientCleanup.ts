@@ -1,10 +1,10 @@
-﻿// lib/ingredientCleanup.ts
+// lib/ingredientCleanup.ts
 
 // Turns ugly ingredient lines into nicer, more consistent ones.
 // - trims bullets
 // - normalizes whitespace
-// - converts decimals like 0.3333333 cup -> 1/3 cup
-// - converts 1.5 -> 1 1/2 (when it looks like a measurement)
+// - converts decimals like 0.3333333 cup → 1/3 cup
+// - converts 1.5 → 1 1/2 (when it looks like a measurement)
 
 const COMMON_UNITS = [
   "tsp",
@@ -85,7 +85,7 @@ function looksLikeMeasurementContext(line: string): boolean {
 }
 
 function stripBullets(s: string): string {
-  return s.replace(/^\s*[-*€¢·]+\s*/, "").trim();
+  return s.replace(/^\s*[-* - ·]+\s*/, "").trim();
 }
 
 function normalizeSpaces(s: string): string {
@@ -93,8 +93,8 @@ function normalizeSpaces(s: string): string {
 }
 
 // Convert leading decimal number tokens to nicer fractions.
-// Example: "0.3333333 cup butter" -> "1/3 cup butter"
-// Example: "1.5 cups milk" -> "1 1/2 cups milk"
+// Example: "0.3333333 cup butter" → "1/3 cup butter"
+// Example: "1.5 cups milk" → "1 1/2 cups milk"
 function convertLeadingDecimalToFraction(line: string): string {
   const m = line.match(/^\s*(\d+(\.\d+))\s+(.*)$/);
   if (!m) return line;
@@ -137,4 +137,7 @@ export function cleanIngredientLines(input: unknown): string[] {
   }
   return out;
 }
+
+
+
 

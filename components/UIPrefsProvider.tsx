@@ -107,3 +107,4 @@ export function useUIPrefs() {
   if (!ctx) throw new Error("useUIPrefs must be used inside UIPrefsProvider");
   return ctx;
 }
+

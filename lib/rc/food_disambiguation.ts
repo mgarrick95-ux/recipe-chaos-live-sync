@@ -8,7 +8,7 @@ export type MatchTokens = {
 /**
  * "Mini eggs" are candy, not ingredient eggs.
  * This guard prevents false positives like:
- *   Fried Eggs <---> Cadbury Mini Eggs
+ *   Fried Eggs ←-→ Cadbury Mini Eggs
  */
 export function looksLikeCandyEggs(name: string): boolean {
   const s = safe(name).toLowerCase();
@@ -89,3 +89,6 @@ export function normalizeForMatch(input: string): MatchTokens {
 function safe(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
+
+
+

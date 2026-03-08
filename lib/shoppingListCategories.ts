@@ -236,3 +236,4 @@ export function categorizeItemName(name: string): ShoppingCategory {
 
   return "Other";
 }
+

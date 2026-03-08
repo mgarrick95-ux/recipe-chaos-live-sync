@@ -1,26 +1,18 @@
-// app/api/shopping-list/route.ts
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { supabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-/**
- * Compatibility alias.
- * Prefer using /api/shopping-list/items for all real app behavior.
- */
-export async function GET(req: Request) {
-  const supabase = createSupabaseServerClient(req);
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
+const DEFAULT_USER_ID = "125bc9a1-dd04-4a23-8675-6346dca77c87";
 
-  if (authErr || !auth?.user) {
-    return NextResponse.json({ ok: false, error: "Not authenticated" }, { status: 401 });
-  }
+export async function GET() {
+  const supabase = supabaseServer;
 
   const { data, error } = await supabase
     .from("shopping_list_items")
     .select("*")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", DEFAULT_USER_ID)
     .eq("dismissed", false)
     .order("created_at", { ascending: false });
 

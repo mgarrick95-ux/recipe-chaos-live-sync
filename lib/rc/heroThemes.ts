@@ -1,11 +1,18 @@
-﻿// lib/rc/heroThemes.ts
-import type { RcChaosObject, RcHeroTheme } from "@/components/rc/RcPageHero";
+// lib/rc/heroThemes.ts
+import type { RcChaosItem } from "@/components/rc/RcPageHero";
+
+export type RcHeroTheme = {
+  backgroundClass: string;
+  glowClass: string;
+  glow2Class: string;
+  accentDotClass: string;
+};
 
 export type RcPageHeroPreset = {
   title: string;
   tagline?: string;
   theme: RcHeroTheme;
-  chaos: RcChaosObject[];
+  chaos: RcChaosItem[];
 };
 
 export const frostPantryHero: RcPageHeroPreset = {
@@ -15,21 +22,20 @@ export const frostPantryHero: RcPageHeroPreset = {
     backgroundClass: "bg-gradient-to-br from-[#0B1026] via-[#0A0F22] to-[#080B18]",
     glowClass: "bg-fuchsia-500/12",
     glow2Class: "bg-cyan-400/10",
-    accentDotClass: "bg-fuchsia-400",
+    accentDotClass: "bg-fuchsia-400"
   },
   chaos: [
-    { id: "can", emoji: "ðŸ¥«", depth: 2 },
-    { id: "ice", emoji: "ðŸ§Š", depth: 3 },
-    { id: "bread", emoji: "ðŸž", depth: 1 },
-    { id: "cheese", emoji: "ðŸ§€", depth: 2 },
-    { id: "milk", emoji: "ðŸ¥›", depth: 1 },
-    { id: "jar", emoji: "ðŸ«™", depth: 2 },
-    { id: "label", emoji: "ðŸ·ï¸", depth: 1 },
-    { id: "spark", emoji: "œ¨", depth: 3 },
-  ],
+    { id: "can", emoji: "*" },
+    { id: "ice", emoji: "*" },
+    { id: "bread", emoji: "*" },
+    { id: "cheese", emoji: "*" },
+    { id: "milk", emoji: "*" },
+    { id: "jar", emoji: "*" },
+    { id: "label", emoji: "*" },
+    { id: "spark", emoji: "*" }
+  ]
 };
 
-// Placeholder presets for later (same frame, different vibes)
 export const recipesHero: RcPageHeroPreset = {
   title: "Recipes",
   tagline: "No rules. No pressure. Just food.",
@@ -37,15 +43,14 @@ export const recipesHero: RcPageHeroPreset = {
     backgroundClass: "bg-gradient-to-br from-[#2A004E] via-[#0D0F25] to-[#070816]",
     glowClass: "bg-fuchsia-500/14",
     glow2Class: "bg-emerald-400/10",
-    accentDotClass: "bg-fuchsia-400",
+    accentDotClass: "bg-fuchsia-400"
   },
   chaos: [
-    { id: "carrot", emoji: "ðŸ¥•", depth: 2 },
-    { id: "garlic", emoji: "ðŸ§„", depth: 3 },
-    { id: "book", emoji: "ðŸ“–", depth: 1 },
-    { id: "knife", emoji: "ðŸ”ª", depth: 2 },
-    { id: "bowl", emoji: "ðŸ¥£", depth: 1 },
-    { id: "spark", emoji: "œ¨", depth: 3 },
-  ],
+    { id: "carrot", emoji: "*" },
+    { id: "garlic", emoji: "*" },
+    { id: "book", emoji: "*" },
+    { id: "knife", emoji: "*" },
+    { id: "bowl", emoji: "*" },
+    { id: "spark", emoji: "*" }
+  ]
 };
-

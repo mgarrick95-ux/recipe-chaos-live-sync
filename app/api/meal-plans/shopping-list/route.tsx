@@ -144,7 +144,7 @@ export async function POST() {
     );
 
     // Coverage + missing
-    // We store missing as a Map: normalized_key -> display_name
+    // We store missing as a Map: normalized_key → display_name
     const missingMap = new Map<string, string>();
     const subs: Record<string, string[]> = {};
     const coverage: Record<string, { have: number; total: number; percent: number }> = {};
@@ -219,3 +219,5 @@ export async function POST() {
     );
   }
 }
+
+

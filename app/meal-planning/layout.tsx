@@ -5,3 +5,4 @@ export default function MealPlanningLayout({ children }: { children: React.React
   // RootLayout already provides the app shell + sidebar.
   return <>{children}</>;
 }
+

@@ -22,7 +22,7 @@ function SoftCard({
         <div className="min-w-0">
           <div className="text-lg font-extrabold tracking-tight">{title}</div>
           <div className="mt-1 text-sm text-white/70">{desc}</div>
-          <div className="mt-4 text-xs text-white/55 group-hover:text-white/70">Open †’</div>
+          <div className="mt-4 text-xs text-white/55 group-hover:text-white/70">Open →</div>
         </div>
       </div>
     </Link>
@@ -71,9 +71,9 @@ export default function HomePage() {
       {/* Cards */}
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="grid gap-5 md:grid-cols-3">
-          <SoftCard title="Recipes" desc="Store and revisit meals you actually make." href="/recipes" icon="ðŸ“–" />
-          <SoftCard title="Pantry & Freezer" desc="Track what's actually in stock." href="/frostpantry" icon="ðŸ§Š" />
-          <SoftCard title="Meal Planning" desc="Simple, flexible meal ideas €” no pressure." href="/meal-planning" icon="ðŸ—“" />
+          <SoftCard title="Recipes" desc="Store and revisit meals you actually make." href="/recipes" icon="[emoji]“–" />
+          <SoftCard title="Pantry & Freezer" desc="Track what's actually in stock." href="/frostpantry" icon="[emoji]§Š" />
+          <SoftCard title="Meal Planning" desc="Simple, flexible meal ideas. No pressure." href="/meal-planning" icon="🍽️" />
         </div>
 
         <div className="mt-10 text-xs text-white/45">
@@ -83,4 +83,8 @@ export default function HomePage() {
     </main>
   );
 }
+
+
+
+
 

@@ -14,3 +14,4 @@ export function cosineSim(a: number[], b: number[]): number {
 export function textForEmbedding(r: { title:string; ingredients:string[]; steps:string[]; tags?:string[] }) {
   return [r.title, (r.tags||[]).join(', '), r.ingredients.join('\n'), r.steps.join('\n')].join('\n\n');
 }
+

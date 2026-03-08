@@ -15,3 +15,4 @@ export const supabase = createBrowserClient(url, anon);
 
 // Keep compatibility for any old imports
 export const hasSupabase = Boolean(url && anon);
+

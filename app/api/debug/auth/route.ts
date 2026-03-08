@@ -36,3 +36,4 @@ export async function GET() {
     error: error?.message || null,
   });
 }
+

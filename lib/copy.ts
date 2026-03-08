@@ -80,7 +80,7 @@ const COPY: CopyMap = {
       },
       some: {
         minimal: "No items yet.",
-        gentle: "No items yet €” keep it simple.",
+        gentle: "No items yet. Keep it simple.",
         snark_lite: "No items yet. Low-power week.",
         spicy: "No items yet. Battery saver vibes.",
       },
@@ -105,7 +105,7 @@ export function t(key: string, prefs?: UIPrefsLike, brain?: BrainCapacity): stri
   const tone = normalizeTone(prefs);
   const entry = COPY[key];
 
-  // œ… Hard guard: missing key should NEVER crash
+  // ... Hard guard: missing key should NEVER crash
   if (!entry) {
     // Don't leak internal keys into UI unless you want that.
     // Return something calm and generic.
@@ -128,4 +128,7 @@ export function t(key: string, prefs?: UIPrefsLike, brain?: BrainCapacity): stri
   // absolute fallback (should never happen)
   return "Updated.";
 }
+
+
+
 

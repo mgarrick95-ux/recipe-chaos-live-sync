@@ -336,3 +336,4 @@ export function matchToStorage(
   const name = typeof a === "string" ? a : typeof b === "string" ? b : "";
   return { kind: "none", canonical: canonicalizeStrict(name) || "", matches: [] };
 }
+

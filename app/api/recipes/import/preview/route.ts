@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 type PreviewRequest = {
   url: string;
@@ -192,7 +192,7 @@ function normalizeSteps(rawSteps: string[]): string[] {
   const cleaned = (rawSteps || [])
     .map((s) => cleanText(String(s)))
     .map((s) => s.replace(/^\s*(directions|instructions|method)\s*:\s*/i, ""))
-    .map((s) => s.replace(/^\s*[-€¢]+\s*/g, "").trim())
+    .map((s) => s.replace(/^\s*[- - ]+\s*/g, "").trim())
     .filter(Boolean);
 
   if (cleaned.length === 0) return [];
@@ -428,4 +428,6 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
 

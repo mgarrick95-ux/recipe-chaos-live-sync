@@ -3,3 +3,4 @@ export default function SmartMealPlanningLayout({ children }: { children: React.
   // Same rule as /meal-planning/layout.tsx
   return <>{children}</>;
 }
+

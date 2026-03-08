@@ -1,4 +1,4 @@
-﻿// lib/recipeSuggestions.ts
+// lib/recipeSuggestions.ts
 type AnyRecipe = Record<string, any>;
 
 export type SuggestedRecipe = {
@@ -212,4 +212,5 @@ export function generateSuggestedRecipes(opts: {
     suggestions: shuffled.slice(0, limit),
   };
 }
+
 

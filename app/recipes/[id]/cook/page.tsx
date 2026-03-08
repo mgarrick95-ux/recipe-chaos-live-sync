@@ -114,9 +114,9 @@ function splitIngredientAliases(rawLine: string): string[] {
   // We want possible “names” an ingredient might be referred to as.
   // Examples:
   // "1½ pounds sirloin steak (or strip loin or ribeye)"
-  // -> ["sirloin steak", "strip loin", "ribeye"]
+  // → ["sirloin steak", "strip loin", "ribeye"]
   // "salt and black pepper (or steak spice, to taste )"
-  // -> ["salt", "black pepper", "steak spice"]
+  // → ["salt", "black pepper", "steak spice"]
   const line = rawLine || "";
   const parenMatches = Array.from(line.matchAll(/\(([^)]+)\)/g)).map((m) => m[1] || "");
   const withoutParens = line.replace(/\([^)]+\)/g, " ");
@@ -692,3 +692,4 @@ export default function CookPage() {
     </div>
   );
 }
+

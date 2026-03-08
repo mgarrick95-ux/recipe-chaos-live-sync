@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import OpenAI from "openai";
 
@@ -35,7 +35,7 @@ export async function POST() {
     const pantryText = data
       .map(
         (item: any) =>
-          `${item.name} €” Qty: ${item.quantity ?? "?"}, Meals: ${
+          `${item.name} " Qty: ${item.quantity ?? "?"}, Meals: ${
             item.total_meals ?? "?"
           }, Category: ${item.category ?? "?"}, Stored: ${
             item.stored_on ?? "?"
@@ -44,7 +44,7 @@ export async function POST() {
       .join("\n");
 
     const prompt = `
-You are FrostPantryAI €” an assistant that helps plan meals based only on what's in the user's freezer & pantry.
+You are FrostPantryAI " an assistant that helps plan meals based only on what's in the user's freezer & pantry.
 
 Here is the user's full inventory:
 
@@ -52,7 +52,7 @@ ${pantryText}
 
 Create:
 1. A brief plan for tonight.
-2. 3€“5 meal ideas using the items they should use first (urgent or soon).
+2. 3"5 meal ideas using the items they should use first (urgent or soon).
 3. Combine leftovers if appropriate.
 4. Suggest what needs to be thawed or prepped.
 
@@ -80,4 +80,6 @@ Keep it short, friendly, and practical. No fancy ingredients not in the list.
     );
   }
 }
+
+
 

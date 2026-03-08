@@ -102,3 +102,4 @@ export function subscribeRealtime(handlers: RealtimeHandlers) {
     supabase.removeChannel(channel);
   };
 }
+

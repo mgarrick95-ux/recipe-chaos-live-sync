@@ -55,7 +55,7 @@ const CATEGORY_ORDER: ShoppingCategory[] = [
   "Other",
 ];
 
-// Pantry/Freezer -> Shopping review tracking (localStorage)
+// Pantry/Freezer → Shopping review tracking (localStorage)
 const PF_EVENTS_KEY = "rc_pf_shopping_events";
 const SHOP_LAST_VISIT_KEY = "rc_shopping_last_visit_ts";
 const SHOP_PF_ACK_TS_KEY = "rc_shopping_pf_ack_ts";
@@ -780,7 +780,7 @@ export default function ShoppingListPage() {
   const [dupRemindMode, setDupRemindMode] = useState<DupRemindMode>("off");
   const [dupOffSnapshot, setDupOffSnapshot] = useState<string[]>([]);
 
-  // Burn the evidence prompt + preference
+  // Clear all prompt + preference
   const [burnPromptOpen, setBurnPromptOpen] = useState(false);
   const [burnSkipConfirm, setBurnSkipConfirm] = useState(false);
   const [burnDontAskAgainChecked, setBurnDontAskAgainChecked] = useState(false);
@@ -1095,11 +1095,13 @@ export default function ShoppingListPage() {
   const activeCrossedCount = activeItems.filter((i) => i.checked).length;
 
   async function burnEvidenceNow() {
-    const ids = activeItems.map((i) => i.id);
+    const ids = activeItems.filter((i) => i.checked).map((i) => i.id);
     if (ids.length === 0) return;
 
+    const deletingAll = ids.length === activeItems.length;
+
     closeAllPopovers();
-    setStatus("Burning...");
+    setStatus(deletingAll ? "Deleting all..." : "Deleting checked...");
     await deleteMany(ids);
     setStatus("");
     setBurnPromptOpen(false);
@@ -1759,7 +1761,7 @@ export default function ShoppingListPage() {
         </p>
 
         <div className="mt-1 text-xs md:text-sm text-white/55">
-          Tap a row to cross it off. Burn the evidence clears the list.
+          Tap a row to cross it off. Delete checked removes crossed-off items.
         </div>
 
         {dupTotal > 0 ? (
@@ -1809,7 +1811,7 @@ export default function ShoppingListPage() {
         <button
           type="button"
           onClick={() => {
-            if (activeCount === 0) return;
+            if (activeCrossedCount === 0) return;
 
             if (burnSkipConfirm) {
               burnEvidenceNow();
@@ -1820,10 +1822,16 @@ export default function ShoppingListPage() {
             setBurnPromptOpen(true);
           }}
           className={btnPrimary}
-          disabled={activeCount === 0}
-          title="Clears the list"
+          disabled={activeCrossedCount === 0}
+          title={
+            activeCrossedCount === 0
+              ? "Cross off items first"
+              : activeCrossedCount === activeCount
+              ? "Delete all items"
+              : "Delete checked items"
+          }
         >
-          Burn the evidence
+          {activeCrossedCount === activeCount ? "Delete all" : "Delete checked"}
         </button>
       </div>
     </div>
@@ -2534,10 +2542,10 @@ export default function ShoppingListPage() {
             <div className="text-xl font-extrabold tracking-tight">
               {activeCount > 0 && activeCrossedCount === activeCount
                 ? "All items crossed off."
-                : "Burn the evidence?"}
+                : activeCrossedCount === activeCount ? "Delete all items?" : "Delete checked items?"}
             </div>
 
-            <div className="mt-2 text-white/70">This deletes the list.</div>
+            <div className="mt-2 text-white/70">{activeCrossedCount === activeCount ? "This deletes the whole list." : "This deletes only the checked items."}</div>
 
             <label className="mt-5 flex items-center gap-3 text-sm text-white/75 select-none">
               <input
@@ -2569,7 +2577,7 @@ export default function ShoppingListPage() {
                   await burnEvidenceNow();
                 }}
               >
-                Burn the evidence
+                {activeCrossedCount === activeCount ? "Delete all" : "Delete checked"}
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-﻿// app/api/receipt/parse/route.ts
+// app/api/receipt/parse/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -201,7 +201,7 @@ export async function POST(req: Request) {
 
       const items = parseTextToItems(text);
 
-      // IMPORTANT: never 500 for €œno items found€
+      // IMPORTANT: never 500 for "no items found"
       if (items.length === 0) {
         return NextResponse.json(
           {
@@ -246,7 +246,7 @@ export async function POST(req: Request) {
 
       const joined = texts.join("\n\n").trim();
 
-      // œ… Fully wired behavior: scanned/malformed PDFs/images return 200 + message, never 500
+      // ... Fully wired behavior: scanned/malformed PDFs/images return 200 + message, never 500
       if (!joined) {
         const isImage = kinds.some((k) => k === "image");
         const isPdf = kinds.some((k) => k === "pdf" || k === "pdf_error");
@@ -321,4 +321,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
+
 

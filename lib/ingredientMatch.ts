@@ -343,3 +343,4 @@ export function parseRecipes(json: any): any[] {
   if (Array.isArray(json?.data)) return json.data;
   return [];
 }
+

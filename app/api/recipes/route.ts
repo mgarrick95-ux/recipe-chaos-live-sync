@@ -1,6 +1,6 @@
 // app/api/recipes/route.ts
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
 
 /**
  * Canonical API contract for RecipeChaos
@@ -145,8 +145,10 @@ function autoTagsFromContent(title: string, ingredients: string[], existingTags:
    Handlers
 ========================= */
 
-export async function GET() {
-  const { data, error } = await supabaseServer
+export async function GET(request: Request) {
+  const supabase = createSupabaseServerClient(request);
+
+  const { data, error } = await supabase
     .from("recipes")
     .select("*")
     .order("created_at", { ascending: false });
@@ -156,6 +158,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const supabase = createSupabaseServerClient(req);
+
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
@@ -207,7 +211,7 @@ export async function POST(req: Request) {
     if ("source_url" in (body as any)) insert.source_url = (body as any).source_url ?? null;
     if ("source_name" in (body as any)) insert.source_name = (body as any).source_name ?? null;
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from("recipes")
       .insert(insert)
       .select("id,tags")
@@ -219,3 +223,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
+

@@ -1,4 +1,4 @@
-﻿// app/api/recipes/clip/route.ts
+// app/api/recipes/clip/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -93,4 +93,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
 

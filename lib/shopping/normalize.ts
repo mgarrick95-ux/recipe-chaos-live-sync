@@ -1,4 +1,4 @@
-﻿// lib/shopping/normalize.ts
+// lib/shopping/normalize.ts
 
 export type ShoppingIdent = {
   displayName: string; // product only
@@ -68,7 +68,7 @@ const LEADING_PREP_WORDS = [
 
 /**
  * Measure/container words that should be stripped even WITHOUT a number.
- * This fixes: "pinch oregano" -> "oregano"
+ * This fixes: "pinch oregano" → "oregano"
  */
 const LEADING_MEASURE_OR_CONTAINER = new Set([
   // measures
@@ -185,8 +185,8 @@ function stripLeadingPrep(s: string) {
 
 /**
  * Strip leading numeric measure like:
- * "1 oz cheddar" -> "cheddar"
- * "2 cups flour" -> "flour"
+ * "1 oz cheddar" → "cheddar"
+ * "2 cups flour" → "flour"
  */
 function stripLeadingNumericMeasure(s: string) {
   let out = normalizeSpaces(s);
@@ -214,8 +214,8 @@ function stripLeadingNumericMeasure(s: string) {
 
 /**
  * Strip leading measure/container words even when there is NO number:
- * "pinch oregano" -> "oregano"
- * "package jumbo" -> "jumbo" (then garbage-filter drops it)
+ * "pinch oregano" → "oregano"
+ * "package jumbo" → "jumbo" (then garbage-filter drops it)
  */
 function stripLeadingMeasureWordsNoNumber(s: string) {
   let out = normalizeSpaces(s);
@@ -264,7 +264,7 @@ function cleanProductOnly(raw: string): string {
   // articles
   s = stripLeadingArticles(s);
 
-  // €œeverything but the€ edge
+  // "everything but the" edge
   s = s.replace(/\beverything but the\b/i, "everything but").trim();
 
   s = normalizeSpaces(s);
@@ -306,3 +306,10 @@ export function normalizeShoppingListIdentity(input: string): ShoppingIdent {
   return normalizeShoppingListInput(input);
 }
 
+
+
+
+
+export function normalizeName(input: string): string {
+  return normalizeShoppingListInput(input).normalizedName;
+}

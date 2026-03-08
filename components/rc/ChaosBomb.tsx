@@ -188,3 +188,4 @@ export default function ChaosBomb({ onBoom, title }: Props) {
     </button>
   );
 }
+

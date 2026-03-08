@@ -1,49 +1,28 @@
-// app/api/shopping-list/sync-derived/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+import { supabaseServer } from "@/lib/supabaseServer";
 import { normalizeShoppingListIdentity } from "@/lib/shopping/normalize";
 
 type AnyRecord = Record<string, any>;
 export const dynamic = "force-dynamic";
 
-function supabaseFromCookies() {
-  const cookieStore = cookies();
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: "", ...options, maxAge: 0 });
-        },
-      },
-    }
-  );
-}
+const DEFAULT_USER_ID = "125bc9a1-dd04-4a23-8675-6346dca77c87";
 
 function toPositiveInt(n: unknown, fallback = 1): number {
   if (typeof n === "number" && Number.isFinite(n)) {
     const v = Math.floor(n);
     return v >= 1 ? v : fallback;
   }
+
   if (typeof n === "string") {
     const t = n.trim();
     if (!t) return fallback;
     const v = Math.floor(Number(t));
     return Number.isFinite(v) && v >= 1 ? v : fallback;
   }
+
   return fallback;
 }
 
-/** ---------- ingredient extraction ---------- */
 function extractIngredients(recipe: AnyRecord): string[] {
   const candidates = [
     recipe.ingredients,
@@ -59,10 +38,13 @@ function extractIngredients(recipe: AnyRecord): string[] {
 
     if (Array.isArray(val)) {
       const out: string[] = [];
+
       for (const item of val) {
         if (!item) continue;
-        if (typeof item === "string") out.push(item);
-        else if (typeof item === "object") {
+
+        if (typeof item === "string") {
+          out.push(item);
+        } else if (typeof item === "object") {
           const name =
             (item as any).name ??
             (item as any).ingredient ??
@@ -70,9 +52,13 @@ function extractIngredients(recipe: AnyRecord): string[] {
             (item as any).value ??
             (item as any).label ??
             null;
-          if (typeof name === "string" && name.trim()) out.push(name);
+
+          if (typeof name === "string" && name.trim()) {
+            out.push(name);
+          }
         }
       }
+
       return out.map((s) => s.trim()).filter(Boolean);
     }
 
@@ -81,6 +67,7 @@ function extractIngredients(recipe: AnyRecord): string[] {
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
+
       if (lines.length) return lines;
     }
   }
@@ -90,16 +77,7 @@ function extractIngredients(recipe: AnyRecord): string[] {
 
 export async function POST(req: Request) {
   try {
-    const supabase = supabaseFromCookies();
-
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const supabase = supabaseServer;
 
     const body = await req.json().catch(() => null);
     const recipeIdsRaw = body?.recipe_ids;
@@ -137,8 +115,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // 1) Fetch recipes (if any)
     let recipes: AnyRecord[] = [];
+
     if (recipe_ids.length > 0) {
       const { data, error: recipesErr } = await supabase
         .from("recipes")
@@ -151,28 +129,31 @@ export async function POST(req: Request) {
           { status: 500 }
         );
       }
+
       recipes = (data ?? []) as AnyRecord[];
     }
 
-    // 2) Collect ingredients (+ sides)
-    const allIngredientLines: { line: string; source_recipe_id: string | null }[] =
-      [];
+    const allIngredientLines: { line: string; source_recipe_id: string | null }[] = [];
 
     for (const r of recipes ?? []) {
       const ingredients = extractIngredients(r as AnyRecord);
+
       for (const ing of ingredients) {
         const line = String(ing ?? "").trim();
-        if (line)
+        if (line) {
           allIngredientLines.push({
             line,
             source_recipe_id: String((r as any).id),
           });
+        }
       }
     }
 
     for (const s of side_lines) {
       const line = String(s ?? "").trim();
-      if (line) allIngredientLines.push({ line, source_recipe_id: null });
+      if (line) {
+        allIngredientLines.push({ line, source_recipe_id: null });
+      }
     }
 
     if (allIngredientLines.length === 0) {
@@ -194,7 +175,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3) Count occurrences within this sync run (so derived has quantity)
     const counts = new Map<
       string,
       {
@@ -208,7 +188,6 @@ export async function POST(req: Request) {
     for (const item of allIngredientLines) {
       const ident = normalizeShoppingListIdentity(item.line);
 
-      // ✅ IMPORTANT: drop garbage (everything-but-the / jumbo / etc.)
       if (!ident.displayName || !ident.normalizedName) continue;
 
       const normalized_name = ident.normalizedName;
@@ -228,10 +207,10 @@ export async function POST(req: Request) {
     }
 
     const toSync = Array.from(counts.values()).map((v) => ({
-      user_id: user.id,
+      user_id: DEFAULT_USER_ID,
       name: v.display_name,
       normalized_name: v.normalized_name,
-      quantity: String(toPositiveInt(v.count, 1)), // schema is text
+      quantity: String(toPositiveInt(v.count, 1)),
       unit: null as string | null,
       source_type: "derived" as const,
       source_recipe_id: v.any_recipe_id ?? null,
@@ -253,13 +232,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4) Check existing items for THIS USER only
     const normalizedToSync = toSync.map((x) => x.normalized_name);
 
     const { data: existing, error: existingErr } = await supabase
       .from("shopping_list_items")
-      .select("id,normalized_name,source_type,dismissed,checked,is_derived,quantity")
-      .eq("user_id", user.id)
+      .select("id,user_id,normalized_name,source_type,dismissed,checked,is_derived,quantity")
+      .eq("user_id", DEFAULT_USER_ID)
       .in("normalized_name", normalizedToSync);
 
     if (existingErr) {
@@ -269,7 +247,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // “Already active” means ANY active row (manual or derived) for that normalized_name.
     const activeSet = new Set<string>();
     const derivedDismissedByNormalized = new Map<string, string>();
     const activeDerivedByNormalized = new Map<string, { id: string; quantity: any }>();
@@ -304,9 +281,11 @@ export async function POST(req: Request) {
     for (const item of toSync) {
       if (activeSet.has(item.normalized_name)) {
         const activeDerived = activeDerivedByNormalized.get(item.normalized_name);
+
         if (activeDerived) {
           const nextQty = String(toPositiveInt(item.quantity, 1));
           const prevQty = String(toPositiveInt(activeDerived.quantity, 1));
+
           if (nextQty !== prevQty) {
             toUpdateActiveDerived.push({
               id: activeDerived.id,
@@ -315,6 +294,7 @@ export async function POST(req: Request) {
             });
           }
         }
+
         continue;
       }
 
@@ -327,8 +307,8 @@ export async function POST(req: Request) {
       toInsert.push(item);
     }
 
-    // 5) Revive dismissed derived rows
     let revived: any[] = [];
+
     if (toReviveIds.length > 0) {
       const { data: revivedRows, error: reviveErr } = await supabase
         .from("shopping_list_items")
@@ -337,7 +317,7 @@ export async function POST(req: Request) {
           checked: false,
           is_derived: true,
           source_type: "derived",
-          user_id: user.id,
+          user_id: DEFAULT_USER_ID,
         })
         .in("id", toReviveIds)
         .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity");
@@ -348,30 +328,32 @@ export async function POST(req: Request) {
           { status: 500 }
         );
       }
+
       revived = revivedRows ?? [];
     }
 
-    // 6) Upsert brand-new derived rows
     let inserted: any[] = [];
+
     if (toInsert.length > 0) {
-      const { data: insertedRows, error: upsertErr } = await supabase
+      const { data: insertedRows, error: insertErr } = await supabase
         .from("shopping_list_items")
         .upsert(toInsert, {
-          onConflict: "user_id,normalized_name,is_derived",
+          onConflict: "normalized_name,is_derived",
         })
         .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity");
 
-      if (upsertErr) {
+      if (insertErr) {
         return NextResponse.json(
-          { error: `Upsert failed: ${upsertErr.message}` },
+          { error: `Upsert failed: ${insertErr.message}` },
           { status: 500 }
         );
       }
+
       inserted = insertedRows ?? [];
     }
 
-    // 7) Update active derived rows (quantity changes only)
     let updated: any[] = [];
+
     if (toUpdateActiveDerived.length > 0) {
       const updates = await Promise.all(
         toUpdateActiveDerived.map(async (u) => {
@@ -379,6 +361,7 @@ export async function POST(req: Request) {
             .from("shopping_list_items")
             .update({ quantity: u.quantity, name: u.name })
             .eq("id", u.id)
+            .eq("user_id", DEFAULT_USER_ID)
             .select("id,name,normalized_name,source_type,source_recipe_id,checked,dismissed,is_derived,quantity")
             .single();
 

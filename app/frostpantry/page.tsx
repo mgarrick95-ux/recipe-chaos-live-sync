@@ -1,4 +1,4 @@
-﻿// app/frostpantry/page.tsx
+// app/frostpantry/page.tsx
 "use client";
 
 import type React from "react";
@@ -631,7 +631,7 @@ export default function FrostPantryPage() {
       }
 
       if (failed.length > 0) {
-        setErrorMsg(`Some deletes failed: ${failed.slice(0, 3).join(" €¢ ")}${failed.length > 3 ? " €¦" : ""}`);
+        setErrorMsg(`Some deletes failed: ${failed.slice(0, 3).join("  -  ")}${failed.length > 3 ? " ..." : ""}`);
       }
     } catch (e: any) {
       console.error(e);
@@ -821,7 +821,7 @@ export default function FrostPantryPage() {
           `Merged quantity, but some deletes failed: ${failed
             .slice(0, 2)
             .map((f) => String((f.reason as any)?.message || "unknown error"))
-            .join(" €¢ ")}${failed.length > 2 ? " €¦" : ""}`
+            .join("  -  ")}${failed.length > 2 ? " ..." : ""}`
         );
       }
 
@@ -850,18 +850,18 @@ export default function FrostPantryPage() {
     "w-full text-left rounded-xl px-4 py-3 text-sm font-semibold text-white/90 hover:bg-white/10 transition";
 
   const heroChaos = [
-    { id: "jar", emoji: "ðŸ«™" },
-    { id: "milk", emoji: "ðŸ¥›" },
-    { id: "box", emoji: "ðŸ“¦" },
-    { id: "cheese", emoji: "ðŸ§€" },
-    { id: "can", emoji: "ðŸ¥«" },
-    { id: "spark1", emoji: "œ¨" },
-    { id: "spark2", emoji: "œ¦" },
-    { id: "ice", emoji: "ðŸ§Š" },
-    { id: "tag", emoji: "ðŸ·ï¸" },
-    { id: "bowl", emoji: "ðŸ¥£" },
-    { id: "bread", emoji: "ðŸž" },
-    { id: "apple", emoji: "ðŸ" },
+    { id: "jar", emoji: "🫙" },
+    { id: "milk", emoji: "🥛" },
+    { id: "box", emoji: "📦" },
+    { id: "cheese", emoji: "🧀" },
+    { id: "can", emoji: "🥫" },
+    { id: "spark1", emoji: "*" },
+    { id: "spark2", emoji: "*" },
+    { id: "ice", emoji: "🧊" },
+    { id: "tag", emoji: "🏷️" },
+    { id: "bowl", emoji: "🥣" },
+    { id: "bread", emoji: "🍞" },
+    { id: "apple", emoji: "🍎" },
   ];
 
   const header = (
@@ -869,8 +869,8 @@ export default function FrostPantryPage() {
       <RcPageHero
         title="Pantry & Freezer"
         tagline="lets see what you got"
-        chaosItems={heroChaos}
-        heightClass="min-h-[310px]"
+        chaos={heroChaos}
+        height={310}
         rightSlot={
           <div className="flex items-center gap-2">
             <div className="relative" ref={addOptionsRef}>
@@ -880,7 +880,7 @@ export default function FrostPantryPage() {
                 onClick={() => setAddOptionsOpen((v) => !v)}
                 aria-expanded={addOptionsOpen}
               >
-                Add –¾
+                Add
               </button>
 
               {addOptionsOpen ? (
@@ -956,7 +956,7 @@ export default function FrostPantryPage() {
   const iconBtn = "inline-flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white transition";
   const iconBtnDisabled = "opacity-50 pointer-events-none";
 
-  // €œInline duplicate UI€ only appears when the Duplicates tab is active.
+  // "Inline duplicate UI" only appears when the Duplicates tab is active.
   const showDuplicateInlineUi = activeFilter === "duplicates";
 
   const modalGroup = useMemo(() => {
@@ -1009,7 +1009,7 @@ export default function FrostPantryPage() {
                 <div className="text-sm font-bold text-white/90">Group</div>
                 <div className="mt-1 text-sm text-white/70">
                   <span className="font-semibold text-white/85">{modalGroup.name}</span>{" "}
-                  <span className="text-white/45">€¢</span>{" "}
+                  <span className="text-white/45"> - </span>{" "}
                   <span className="text-white/70">{modalGroup.location}</span>
                 </div>
 
@@ -1024,9 +1024,9 @@ export default function FrostPantryPage() {
                           {it.quantity} {it.unit}
                         </div>
                         <div className="mt-1 text-xs text-white/55">
-                          {prettyDateShort(it.stored_on) ? `stored ${prettyDateShort(it.stored_on)}` : "€”"}
-                          {it.use_by ? ` €¢ use by ${prettyDateShort(it.use_by)}` : ""}
-                          {it.is_leftover ? " €¢ leftover" : ""}
+                          {prettyDateShort(it.stored_on) ? `stored ${prettyDateShort(it.stored_on)}` : ""}
+                          {it.use_by ? `  -  use by ${prettyDateShort(it.use_by)}` : ""}
+                          {it.is_leftover ? "  -  leftover" : ""}
                         </div>
                         {it.notes ? <div className="mt-2 text-xs text-white/50">{it.notes}</div> : null}
                         <div className="mt-2 text-[11px] text-white/35 break-all">id: {it.id}</div>
@@ -1085,7 +1085,7 @@ export default function FrostPantryPage() {
                     }}
                     className="rounded-2xl bg-[rgba(34,211,238,0.85)] hover:bg-[rgba(34,211,238,0.95)] px-5 py-3 font-extrabold text-black disabled:opacity-50 shadow-lg shadow-cyan-500/10"
                   >
-                    {dupeBusy ? "Merging€¦" : "Merge"}
+                    {dupeBusy ? "Merging..." : "Merge"}
                   </button>
                 </div>
 
@@ -1176,8 +1176,8 @@ export default function FrostPantryPage() {
               </div>
 
               <div className="text-xs text-white/45 pb-2">
-                Defaults: Fridge 30d €¢ Pantry/Freezer 6mo
-                {!addUseByAuto ? <span className="text-white/40"> €¢ manual</span> : null}
+                Defaults: Fridge 30d  -  Pantry/Freezer 6mo
+                {!addUseByAuto ? <span className="text-white/40">  -  manual</span> : null}
               </div>
             </div>
 
@@ -1195,7 +1195,7 @@ export default function FrostPantryPage() {
                 disabled={addBusy || !addName.trim()}
                 className="rounded-2xl bg-emerald-400/80 hover:bg-emerald-400 px-5 py-3 font-semibold text-black disabled:opacity-50 shadow-lg shadow-emerald-400/10"
               >
-                {addBusy ? "Saving€¦" : "Add item"}
+                {addBusy ? "Saving..." : "Add item"}
               </button>
             </div>
           </form>
@@ -1386,7 +1386,7 @@ export default function FrostPantryPage() {
                 disabled={bulkBusy}
                 className="rounded-2xl bg-red-600 hover:bg-red-500 px-5 py-3 disabled:opacity-60"
               >
-                {bulkBusy ? "Deleting€¦" : `Delete selected (${selectionCount})`}
+                {bulkBusy ? "Deleting..." : `Delete selected (${selectionCount})`}
               </button>
             ) : null}
           </div>
@@ -1395,7 +1395,7 @@ export default function FrostPantryPage() {
 
       {/* Main list */}
       {loading ? (
-        <div className="mt-8 text-white/70">Loading€¦</div>
+        <div className="mt-8 text-white/70">Loading...</div>
       ) : filtered.length === 0 ? (
         <div className="mt-8 text-white/55">
           <div className="font-semibold text-white/70">
@@ -1459,8 +1459,8 @@ export default function FrostPantryPage() {
                       </div>
 
                       <div className="mt-2 text-white/55 text-sm">
-                        {prettyDateShort(item.stored_on) ? `stored ${prettyDateShort(item.stored_on)}` : "€”"}
-                        {item.use_by ? ` €¢ use by ${prettyDateShort(item.use_by)}` : ""}
+                        {prettyDateShort(item.stored_on) ? `stored ${prettyDateShort(item.stored_on)}` : ""}
+                        {item.use_by ? `  -  use by ${prettyDateShort(item.use_by)}` : ""}
                       </div>
 
                       {item.notes ? <div className="mt-2 text-white/50 text-sm">{item.notes}</div> : null}
@@ -1475,7 +1475,7 @@ export default function FrostPantryPage() {
                         onClick={() => changeQuantity(item.id, -1)}
                         type="button"
                       >
-                        €“
+                        "
                       </button>
 
                       <div className="min-w-[120px] text-center font-semibold text-white/85">
@@ -1501,7 +1501,7 @@ export default function FrostPantryPage() {
                       title={isEditing ? "Close edit" : "Edit inline"}
                       aria-label={isEditing ? "Close edit" : "Edit inline"}
                     >
-                      <span className="text-xl leading-none">{isEditing ? "œ–ï¸" : "œï¸"}</span>
+                      <span className="text-xl leading-none">{isEditing ? "Close" : "Edit"}</span>
                     </button>
 
                     {/* Icon-only delete */}
@@ -1517,7 +1517,7 @@ export default function FrostPantryPage() {
                       title="Delete"
                       aria-label="Delete"
                     >
-                      <span className="text-xl leading-none">ðŸ’£</span>
+                      <span className="text-xl leading-none">💣</span>
                     </button>
                   </div>
                 </div>
@@ -1546,7 +1546,7 @@ export default function FrostPantryPage() {
                           disabled={editBusy || !editDraft.name.trim()}
                           className="rounded-2xl bg-emerald-400/80 hover:bg-emerald-400 px-4 py-2 text-sm font-extrabold text-black disabled:opacity-50 shadow-lg shadow-emerald-400/10"
                         >
-                          {editBusy ? "Saving€¦" : "Save"}
+                          {editBusy ? "Saving..." : "Save"}
                         </button>
                       </div>
                     </div>
@@ -1599,7 +1599,7 @@ export default function FrostPantryPage() {
                             value={editDraft.unit}
                             onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, unit: e.target.value } : prev))}
                             className={input}
-                            placeholder="bag, jar, box€¦"
+                            placeholder="bag, jar, box..."
                           />
                         </div>
                       </div>
@@ -1627,8 +1627,8 @@ export default function FrostPantryPage() {
                           className={input}
                         />
                         <div className="mt-1 text-xs text-white/45">
-                          Defaults: Fridge 30d €¢ Pantry/Freezer 6mo
-                          {!editUseByAuto ? <span className="text-white/40"> €¢ manual</span> : null}
+                          Defaults: Fridge 30d  -  Pantry/Freezer 6mo
+                          {!editUseByAuto ? <span className="text-white/40">  -  manual</span> : null}
                         </div>
                       </div>
 
@@ -1652,7 +1652,7 @@ export default function FrostPantryPage() {
                           value={editDraft.notes}
                           onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
                           className={input}
-                          placeholder="Optional notes€¦"
+                          placeholder="Optional notes..."
                         />
                       </div>
                     </div>
@@ -1688,4 +1688,7 @@ function FilterPill({
     </button>
   );
 }
+
+
+
 

@@ -1,4 +1,4 @@
-﻿// lib/recipeStorage.ts
+// lib/recipeStorage.ts
 export type StorageItem = {
   id: string;
   name?: string | null;
@@ -29,8 +29,8 @@ function normalizeWhitespace(s: string) {
   return s.replace(/\s+/g, " ").trim();
 }
 
-// €œGood enough€ normalization: lower, remove punctuation, collapse spaces
-// We DO NOT try to be clever with €œground beef vs beef€ yet €” that's Option C/D.
+// "Good enough" normalization: lower, remove punctuation, collapse spaces
+// We DO NOT try to be clever with "ground beef vs beef" yet " that's Option C/D.
 export function normalizeKey(input: unknown): string {
   const raw = typeof input === "string" ? input : String(input ?? "");
   const s = normalizeWhitespace(raw).toLowerCase();
@@ -38,7 +38,7 @@ export function normalizeKey(input: unknown): string {
   // strip common punctuation, keep letters/numbers/spaces
   const cleaned = s.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
-  // tiny plural softener: noodles -> noodle, spices -> spice (simple trailing s)
+  // tiny plural softener: noodles → noodle, spices → spice (simple trailing s)
   // doesn't affect words like "glass" (becomes "glas")? it would; so keep conservative:
   // only strip trailing "s" if word length > 3
   const parts = cleaned.split(" ").map((w) => {
@@ -146,4 +146,8 @@ export function summarizeMatches(matches: IngredientMatch[]) {
   const missing = matches.filter((m) => m.status === "missing").length;
   return { total, have, missing, allInStock: total > 0 && missing === 0 };
 }
+
+
+
+
 

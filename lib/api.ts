@@ -25,3 +25,4 @@ export async function apiFetch<T>(
 
   return json as T;
 }
+

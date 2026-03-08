@@ -1,4 +1,4 @@
-﻿// app/recipes/page.tsx
+// app/recipes/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -112,7 +112,7 @@ function buildCloseMatchTitle(details: Array<any>) {
 
     if (!ing || !match) return "";
     const kindLabel = kind === "containment" || kind === "token" ? "similar" : kind || "similar";
-    return `${ing} †’ ${match} (${kindLabel})`;
+    return `${ing} or ${match} (${kindLabel})`;
   });
 
   const shown = lines.filter(Boolean);
@@ -346,7 +346,7 @@ export default function RecipesPage() {
   const tabPill =
     "group relative inline-flex items-center gap-3 rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
   const tabPillActive =
-    "group relative inline-flex items-center gap-3 rounded-full bg-[var(--rc-accent)] hover:bg-[var(--rc-accent-hover)] px-5 py-3 text-sm font-extrabold text-black ring-1 ring-white/10 transition shadow-[0_12px_30px_rgba(255,153,51,0.18)]";
+    "group relative inline-flex items-center gap-3 rounded-full bg-[var(--rc-accent)] hover:bg-[var(--rc-accent-hover)] px-5 py-3 text-sm font-extrabold text-white ring-1 ring-white/10 transition shadow-[0_12px_30px_rgba(255,153,51,0.18)]";
 
   function goSaveSuggestion(s: any) {
     const title = String(s?.title ?? "").trim();
@@ -378,20 +378,14 @@ export default function RecipesPage() {
             hrefPhoto="/recipes/add/photo"
           />
         }
-        stickers={[
-          { emoji: "ðŸ“–", top: "16%", left: "74%", size: "66px", rotate: "10deg", opacity: "0.95" },
-          { emoji: "ðŸ§„", top: "44%", left: "90%", size: "54px", rotate: "-12deg", opacity: "0.85" },
-          { emoji: "ðŸ¥•", top: "60%", left: "82%", size: "60px", rotate: "8deg", opacity: "0.9" },
-        ]}
       >
         <div className="flex items-center gap-2 flex-wrap">
           <button type="button" onClick={() => setTab("mine")} className={tab === "mine" ? tabPillActive : tabPill}>
-            <span className="text-lg">ðŸ“š</span>
             <span className="flex flex-col items-start leading-tight">
               <span>My Recipes</span>
               <span
                 className={
-                  tab === "mine" ? "text-black/80 text-[11px] font-semibold" : "text-white/60 text-[11px] font-semibold"
+                  tab === "mine" ? "text-white/90 text-[11px] font-semibold" : "text-white/60 text-[11px] font-semibold"
                 }
               >
                 The usual suspects.
@@ -404,7 +398,6 @@ export default function RecipesPage() {
             onClick={() => setTab("suggested")}
             className={tab === "suggested" ? tabPillActive : tabPill}
           >
-            <span className="text-lg">œ¨</span>
             <span className="flex flex-col items-start leading-tight">
               <span className="flex items-center gap-2">
                 Suggested{" "}
@@ -436,7 +429,7 @@ export default function RecipesPage() {
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search by ingredient, mood, or vague intention€¦"
+                    placeholder="Search recipes..."
                     className="w-[320px] max-w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
                   <div className="text-xs text-white/45">Searches titles, ingredients, and instructions. No judgment.</div>
@@ -449,8 +442,8 @@ export default function RecipesPage() {
                 >
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
-                  <option value="az">A †’ Z</option>
-                  <option value="za">Z †’ A</option>
+                  <option value="az">A to Z</option>
+                  <option value="za">Z to A</option>
                 </select>
 
                 <button type="button" onClick={resetFilters} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3" title="Reset filters">
@@ -492,7 +485,7 @@ export default function RecipesPage() {
 
             <div className="mt-8">
               {loadingRecipes ? (
-                <div className="text-white/70">Loading€¦</div>
+                <div className="text-white/70">Loading…</div>
               ) : recipesError ? (
                 <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{recipesError}</div>
               ) : filtered.length === 0 ? (
@@ -551,10 +544,10 @@ export default function RecipesPage() {
                             toggleFavorite(r);
                           }}
                           className="absolute right-6 top-6 text-2xl leading-none"
-                          title={r.favorite ? "Unfavorite" : "Favorite"}
-                          aria-label={r.favorite ? "Unfavorite" : "Favorite"}
+                          title={r.favorite ? "★" : "☆"}
+                          aria-label={r.favorite ? "★" : "☆"}
                         >
-                          {r.favorite ? "­" : "˜†"}
+                          {r.favorite ? "★" : "☆"}
                         </button>
 
                         <Link href={`/recipes/${r.id}`} className="block">
@@ -591,7 +584,7 @@ export default function RecipesPage() {
                                   className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75 ring-1 ring-white/10"
                                   title={closeTitle || `${softHaveCount} similar match(es)`}
                                 >
-                                  ‰ˆ Similar {softHaveCount}
+                                  ≈ˆ Similar {softHaveCount}
                                 </span>
                               ) : null}
                             </div>
@@ -609,7 +602,7 @@ export default function RecipesPage() {
 
                           <Link
                             href={`/recipes/${r.id}/cook`}
-                            className="rounded-2xl bg-[var(--rc-accent-2)] hover:bg-[var(--rc-accent-2-hover)] px-5 py-3 font-extrabold text-black shadow-[0_12px_26px_rgba(34,211,238,0.18)]"
+                            className="rounded-2xl bg-[var(--rc-accent-2)] hover:bg-[var(--rc-accent-2-hover)] px-5 py-3 font-extrabold text-white shadow-[0_12px_26px_rgba(34,211,238,0.18)]"
                           >
                             Cook it now
                           </Link>
@@ -652,7 +645,7 @@ export default function RecipesPage() {
                   className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10"
                   title="Shuffle the suggestions"
                 >
-                  ðŸ”„ New batch
+                  New batch
                 </button>
               </div>
 
@@ -664,7 +657,7 @@ export default function RecipesPage() {
                   <input
                     value={avoidRaw}
                     onChange={(e) => setAvoidRaw(e.target.value)}
-                    placeholder="kale, chickpeas, capers€¦"
+                    placeholder="kale, chickpeas, capers..."
                     className="mt-3 w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
 
@@ -742,4 +735,6 @@ export default function RecipesPage() {
     </div>
   );
 }
+
+
 

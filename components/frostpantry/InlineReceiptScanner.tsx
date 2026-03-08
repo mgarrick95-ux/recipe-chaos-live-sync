@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReceiptScanTool from "@/components/frostpantry/ReceiptScanTool";
@@ -64,7 +64,7 @@ export default function InlineReceiptScanner({
               className={`${btnBase} ${btnOpen}`}
               onClick={() => {
                 setOpen(false);
-                // small €œno drama€ close; no other side effects
+                // small "no drama" close; no other side effects
               }}
             >
               Hide
@@ -82,4 +82,6 @@ export default function InlineReceiptScanner({
     </div>
   );
 }
+
+
 

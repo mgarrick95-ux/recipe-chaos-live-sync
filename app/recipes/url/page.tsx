@@ -4,3 +4,4 @@ import { redirect } from "next/navigation";
 export default function RecipesUrlRedirectPage() {
   redirect("/recipes/clip");
 }
+

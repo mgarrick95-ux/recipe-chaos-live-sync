@@ -2,10 +2,10 @@
 // Display-only helpers to make imported decimals look like real cooking measurements.
 //
 // Examples:
-//  "0.333333333 cup butter" -> "⅓ cup butter"
-//  "1.5 cups milk"          -> "1½ cups milk"
-//  "2.25 tsp salt"          -> "2¼ tsp salt"
-//  "1 1/2 cups"             -> "1½ cups"
+//  "0.333333333 cup butter" → "⅓ cup butter"
+//  "1.5 cups milk"          → "1½ cups milk"
+//  "2.25 tsp salt"          → "2¼ tsp salt"
+//  "1 1/2 cups"             → "1½ cups"
 
 const FRACTION_GLYPHS: Record<string, string> = {
   "1/8": "⅛",
@@ -160,3 +160,5 @@ export function humanizeIngredientLine(line: string): string {
 export function humanizeIngredientLines(lines: string[]): string[] {
   return (lines || []).map((l) => humanizeIngredientLine(String(l)));
 }
+
+

@@ -1,5 +1,6 @@
-// app/api/recipes/url-preview/route.ts
 import { NextResponse } from "next/server";
+
+type ReviewState = "imported" | "cleaned" | "inferred" | "missing";
 
 type PreviewResult = {
   title: string;
@@ -9,6 +10,15 @@ type PreviewResult = {
   source_url: string;
   source_name?: string | null;
   source_text?: string | null;
+  review: {
+    title: ReviewState;
+    description: ReviewState;
+    ingredients: ReviewState;
+    instructions: ReviewState;
+  };
+  warnings: string[];
+  notes: string[];
+  blocked?: boolean;
 };
 
 function hostFromUrl(urlStr: string): string | null {
@@ -42,8 +52,8 @@ function pickRecipeNode(ld: any): any | null {
   const isRecipe = (node: any) => {
     const t = node?.["@type"];
     if (!t) return false;
-    if (Array.isArray(t)) return t.includes("Recipe");
-    return t === "Recipe";
+    if (Array.isArray(t)) return t.some((x) => String(x).toLowerCase() === "recipe");
+    return String(t).toLowerCase() === "recipe";
   };
 
   const visit = (node: any): any | null => {
@@ -93,7 +103,6 @@ function extractLdJsonBlocks(html: string): any[] {
       continue;
     }
 
-    // Some sites jam multiple JSON objects or add trailing junk. Try a minimal cleanup.
     const cleaned = raw.replace(/^\s*<!--/, "").replace(/-->\s*$/, "").trim();
     const parsed2 = safeJsonParse(cleaned);
     if (parsed2) blocks.push(parsed2);
@@ -104,9 +113,12 @@ function extractLdJsonBlocks(html: string): any[] {
 
 function toStringArray(value: any): string[] {
   if (!value) return [];
-  if (Array.isArray(value))
+  if (Array.isArray(value)) {
     return value.map(String).map((s) => s.trim()).filter(Boolean);
-  if (typeof value === "string") return [value.trim()].filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return [value.trim()].filter(Boolean);
+  }
   return [String(value)].map((s) => s.trim()).filter(Boolean);
 }
 
@@ -121,25 +133,31 @@ function normalizeInstructions(value: any): string[] {
 
   if (Array.isArray(value)) {
     const out: string[] = [];
+
     for (const v of value) {
-      if (typeof v === "string") out.push(stripHtml(v));
-      else if (v?.text) out.push(stripHtml(String(v.text)));
-      else if (v?.name) out.push(stripHtml(String(v.name)));
-      else out.push(stripHtml(String(v)));
+      if (typeof v === "string") {
+        out.push(stripHtml(v));
+      } else if (v?.text) {
+        out.push(stripHtml(String(v.text)));
+      } else if (v?.name) {
+        out.push(stripHtml(String(v.name)));
+      } else {
+        out.push(stripHtml(String(v)));
+      }
     }
+
     return out
       .map((s) => normalizeText(s).replace(/\s+/g, " ").trim())
       .filter(Boolean);
   }
 
-  if (typeof value === "object") {
-    if (value.text) return normalizeInstructions(value.text);
+  if (typeof value === "object" && value.text) {
+    return normalizeInstructions(value.text);
   }
 
   return [];
 }
 
-// --- Light cleanup helpers (safe, no “smart enforcement”) ---
 function decodeCommonEntities(s: string): string {
   return (s || "")
     .replace(/&amp;/g, "&")
@@ -147,17 +165,19 @@ function decodeCommonEntities(s: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/\u00A0/g, " "); // nbsp
+    .replace(/\u00A0/g, " ");
 }
 
 function cleanTitle(raw: string, host: string | null): string {
   let s = decodeCommonEntities(stripHtml(String(raw || ""))).trim();
   s = s.replace(/\s+/g, " ").trim();
 
+  if (/^(403|404|access denied|forbidden)$/i.test(s)) {
+    s = "";
+  }
+
   if (!s) return host ? `Clipped recipe (${host})` : "Clipped recipe";
 
-  // Remove obvious suffix glue: "Title - Site", "Title | Site", "Title • Site"
-  // BUT only if the right side looks like a site-ish label.
   const parts = s.split(/\s[|•–-]\s/).map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
     const left = parts[0];
@@ -165,9 +185,7 @@ function cleanTitle(raw: string, host: string | null): string {
 
     const hostLike =
       host &&
-      right
-        .toLowerCase()
-        .includes(host.toLowerCase().replace(/^www\./, ""));
+      right.toLowerCase().includes(host.toLowerCase().replace(/^www\./, ""));
 
     const rightLooksLikeSite =
       right.length <= 30 &&
@@ -180,11 +198,9 @@ function cleanTitle(raw: string, host: string | null): string {
     }
   }
 
-  // Tidy trailing punctuation spam
   s = s.replace(/[•|\-–—:]+$/g, "").trim();
   s = s.replace(/[!?.]{3,}$/g, "!!").trim();
 
-  // Clamp length
   if (s.length > 120) s = s.slice(0, 120).trim();
 
   return s || (host ? `Clipped recipe (${host})` : "Clipped recipe");
@@ -199,7 +215,6 @@ function cleanDescription(raw: string | null | undefined): string | null {
   return s || null;
 }
 
-// --- Fractions prettifier (kept from your version)
 function gcd(a: number, b: number): number {
   a = Math.abs(a);
   b = Math.abs(b);
@@ -248,7 +263,6 @@ function humanizeIngredientLines(lines: string[]): string[] {
     .filter(Boolean);
 }
 
-// --- URL cleanup: strip tracking parameters that cause weird redirects / blocks
 function sanitizeUrl(raw: string): string {
   try {
     const u = new URL(raw);
@@ -287,19 +301,20 @@ async function fetchDirect(url: string): Promise<FetchAttempt> {
       Accept: "text/html,application/xhtml+xml",
     },
     redirect: "follow",
+    cache: "no-store",
   });
 
   const body = await res.text().catch(() => "");
   return { ok: res.ok, status: res.status, body, mode: "direct" };
 }
 
-// Fallback: r.jina.ai (reader/proxy). This often bypasses bot blocks.
 async function fetchFallback(url: string): Promise<FetchAttempt> {
   const target =
     url.startsWith("https://") || url.startsWith("http://")
       ? url
       : `https://${url}`;
   const readerUrl = `https://r.jina.ai/${target}`;
+
   const res = await fetch(readerUrl, {
     headers: {
       "User-Agent":
@@ -307,13 +322,13 @@ async function fetchFallback(url: string): Promise<FetchAttempt> {
       Accept: "text/plain,text/html,*/*",
     },
     redirect: "follow",
+    cache: "no-store",
   });
 
   const body = await res.text().catch(() => "");
   return { ok: res.ok, status: res.status, body, mode: "fallback" };
 }
 
-// Parse “Ingredients” + “Instructions/Directions/Method” sections from plain text
 function parseSectionsFromText(raw: string): {
   title: string;
   ingredients: string[];
@@ -325,7 +340,7 @@ function parseSectionsFromText(raw: string): {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  let title =
+  const title =
     lines.find((l) => l.length >= 6 && l.length <= 120 && !/^\d/.test(l)) ||
     "Clipped recipe";
 
@@ -345,7 +360,9 @@ function parseSectionsFromText(raw: string): {
     instructions.push(...lines.slice(insIdx + 1));
   } else {
     for (const l of lines) {
-      if (/^\d+[\).\s]/.test(l)) instructions.push(l.replace(/^\d+[\).\s]*/, "").trim());
+      if (/^\d+[\).\s]/.test(l)) {
+        instructions.push(l.replace(/^\d+[\).\s]*/, "").trim());
+      }
     }
   }
 
@@ -367,14 +384,17 @@ export async function POST(req: Request) {
     const url = sanitizeUrl(rawUrl);
     const host = hostFromUrl(url) || null;
 
-    // 1) direct attempt
-    const direct = await fetchDirect(url);
+    let direct: FetchAttempt;
+    if (host && host.includes("allrecipes.com")) {
+      direct = await fetchFallback(url);
+    } else {
+      direct = await fetchDirect(url);
+    }
 
     let html = direct.body;
     let usedMode: "direct" | "fallback" = direct.mode;
-
-    // 2) parse JSON-LD from direct HTML if possible
     let recipeNode: any | null = null;
+
     if (direct.ok && html) {
       const ldBlocks = extractLdJsonBlocks(html);
       for (const b of ldBlocks) {
@@ -383,11 +403,12 @@ export async function POST(req: Request) {
       }
     }
 
-    const directBlocked = !direct.ok && (direct.status === 403 || direct.status === 404);
+    const directBlocked = !direct.ok && (direct.status === 402 || direct.status === 403 || direct.status === 404);
     const directNotHelpful = direct.ok && !recipeNode;
 
     if (directBlocked || directNotHelpful) {
       const fallback = await fetchFallback(url);
+
       if (fallback.ok && fallback.body) {
         html = fallback.body;
         usedMode = "fallback";
@@ -398,16 +419,35 @@ export async function POST(req: Request) {
           if (recipeNode) break;
         }
       } else {
-        return NextResponse.json(
-          {
-            error: `Direct fetch failed (${direct.status}) and fallback failed (${fallback.status}).`,
+        const blockedResult: PreviewResult = {
+          title: host ? `Clipped recipe (${host})` : "Clipped recipe",
+          description: null,
+          ingredients: [],
+          instructions: [],
+          source_url: url,
+          source_name: host,
+          source_text: null,
+          review: {
+            title: "cleaned",
+            description: "missing",
+            ingredients: "missing",
+            instructions: "missing",
           },
-          { status: 400 }
-        );
+          warnings: [
+            "This site blocked automatic import.",
+            "You can still save the link and fill in the recipe manually.",
+          ],
+          notes: [
+            `Direct fetch failed (${direct.status}).`,
+            `Fallback fetch failed (${fallback.status}).`,
+          ],
+          blocked: true,
+        };
+
+        return NextResponse.json(blockedResult, { status: 200 });
       }
     }
 
-    // Title/description fallbacks
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const metaDescMatch = html.match(
       /<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i
@@ -423,30 +463,58 @@ export async function POST(req: Request) {
       (metaDescMatch ? metaDescMatch[1] : null) ||
       null;
 
-    // Primary: JSON-LD extraction
     let ingredientsRaw = toStringArray(recipeNode?.recipeIngredient);
     let ingredients = humanizeIngredientLines(ingredientsRaw);
 
     let instructions = normalizeInstructions(recipeNode?.recipeInstructions);
 
-    // Last resort: parse sections from text when JSON-LD is missing/empty
     if ((!ingredients.length && !instructions.length) || (!recipeNode && usedMode === "fallback")) {
       const sectionParsed = parseSectionsFromText(html);
-      if ((!rawTitle || rawTitle.startsWith("Clipped recipe")) && sectionParsed.title) {
-        // rawTitle is const, so we just prefer it later in cleanTitle
+      if (!ingredients.length) {
+        ingredients = humanizeIngredientLines(sectionParsed.ingredients || []);
       }
-      if (!ingredients.length) ingredients = humanizeIngredientLines(sectionParsed.ingredients || []);
-      if (!instructions.length) instructions = sectionParsed.instructions || [];
+      if (!instructions.length) {
+        instructions = sectionParsed.instructions || [];
+      }
     }
 
     if (!ingredients.length && !instructions.length) {
       return NextResponse.json(
         {
           error:
-            "Could not extract recipe data from that URL (site may block scraping or hide recipe content). Try a different source or use Manual/Photo.",
+            "Could not extract recipe data from that URL. The site may block scraping or hide recipe content. You can still use Manual or Photo.",
         },
         { status: 400 }
       );
+    }
+
+    const review: PreviewResult["review"] = {
+      title: recipeNode?.name ? "imported" : "cleaned",
+      description: recipeNode?.description ? "imported" : rawDescription ? "cleaned" : "missing",
+      ingredients: recipeNode?.recipeIngredient
+        ? "imported"
+        : ingredients.length
+        ? "inferred"
+        : "missing",
+      instructions: recipeNode?.recipeInstructions
+        ? "imported"
+        : instructions.length
+        ? "inferred"
+        : "missing",
+    };
+
+    const warnings: string[] = [];
+    const notes: string[] = [];
+
+    if (!ingredients.length) warnings.push("No ingredients were found.");
+    if (!instructions.length) warnings.push("No instructions were found.");
+
+    if (!recipeNode && usedMode === "fallback") {
+      notes.push(
+        "Recipe content was inferred from page text because structured recipe data was not available."
+      );
+    } else if (!recipeNode) {
+      notes.push("Structured recipe data was not found, so best-effort cleanup was used.");
     }
 
     const out: PreviewResult = {
@@ -457,6 +525,9 @@ export async function POST(req: Request) {
       source_url: url,
       source_name: host,
       source_text: null,
+      review,
+      warnings,
+      notes,
     };
 
     return NextResponse.json(out);

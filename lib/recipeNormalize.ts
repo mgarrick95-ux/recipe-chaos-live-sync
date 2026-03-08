@@ -86,3 +86,4 @@ export function normalizeNameForMatch(name: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+

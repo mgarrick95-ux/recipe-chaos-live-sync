@@ -1,9 +1,10 @@
-﻿// app/recipes/clip/page.tsx
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+type ReviewState = "imported" | "cleaned" | "inferred" | "missing";
 
 type PreviewData = {
   title: string;
@@ -13,6 +14,15 @@ type PreviewData = {
   source_url: string;
   source_name?: string | null;
   source_text?: string | null;
+  review?: {
+    title: ReviewState;
+    description: ReviewState;
+    ingredients: ReviewState;
+    instructions: ReviewState;
+  };
+  warnings?: string[];
+    notes?: string[];
+  blocked?: boolean;
 };
 
 function toMultiline(arr: string[]): string {
@@ -26,11 +36,9 @@ function fromMultiline(s: string): string[] {
     .filter(Boolean);
 }
 
-// Light cleanup: make ugly scraped titles less ugly (no extra decisions)
 function cleanTitle(input: string): string {
   let s = (input || "").trim();
 
-  // common html entities (minimal set, safe)
   s = s
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
@@ -39,23 +47,50 @@ function cleanTitle(input: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ");
 
-  // strip repeated trailing punctuation
   s = s.replace(/[!?.]{3,}$/g, "!!");
 
-  // remove obvious site separators at the end: "Title - Site" / "Title | Site"
-  // (only if it looks like a long €œtitle glue€ situation)
-  const parts = s.split(/\s[|€“-]\s/).map((p) => p.trim()).filter(Boolean);
+  const parts = s.split(/\s[|"-]\s/).map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
     const left = parts[0];
-    // if left is reasonably long, prefer it
     if (left.length >= 8) s = left;
   }
 
-  // final trim + clamp to something sane
   s = s.trim();
   if (s.length > 120) s = s.slice(0, 120).trim();
 
   return s || "Clipped recipe";
+}
+
+function reviewLabel(state?: ReviewState): string {
+  if (state === "cleaned") return "Cleaned";
+  if (state === "inferred") return "Needs review";
+  if (state === "missing") return "Missing";
+  return "Imported";
+}
+
+function reviewClass(state?: ReviewState): string {
+  if (state === "cleaned") {
+    return "bg-cyan-400/15 text-cyan-100 ring-cyan-300/20";
+  }
+  if (state === "inferred") {
+    return "bg-amber-400/15 text-amber-100 ring-amber-300/20";
+  }
+  if (state === "missing") {
+    return "bg-red-400/15 text-red-100 ring-red-300/20";
+  }
+  return "bg-emerald-400/15 text-emerald-100 ring-emerald-300/20";
+}
+
+function ReviewBadge({ state }: { state?: ReviewState }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ring-1 ${reviewClass(
+        state
+      )}`}
+    >
+      {reviewLabel(state)}
+    </span>
+  );
 }
 
 export default function SaveFromUrlPage() {
@@ -68,13 +103,11 @@ export default function SaveFromUrlPage() {
 
   const [preview, setPreview] = useState<PreviewData | null>(null);
 
-  // editable fields (what actually gets saved)
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [ingredientsText, setIngredientsText] = useState("");
   const [instructionsText, setInstructionsText] = useState("");
 
-  // allow ?url= to prefill and auto-preview once
   const incomingUrl = (searchParams?.get("url") || "").trim();
   const [didAutoPreview, setDidAutoPreview] = useState(false);
 
@@ -91,7 +124,6 @@ export default function SaveFromUrlPage() {
   );
 
   const previewInstructions = useMemo(() => {
-    // split paragraphs into lines if user pastes blocks
     const lines = fromMultiline(instructionsText);
     if (lines.length > 0) return lines;
 
@@ -121,12 +153,14 @@ export default function SaveFromUrlPage() {
       const data = json as PreviewData;
 
       setPreview(data);
-
-      const cleaned = cleanTitle(data.title || "");
-      setTitle(cleaned);
+      setTitle(cleanTitle(data.title || ""));
       setDescription((data.description || "").trim());
       setIngredientsText(toMultiline(data.ingredients || []));
       setInstructionsText(toMultiline(data.instructions || []));
+
+      if (data.blocked) {
+        setErr(null);
+      }
     } catch (e: any) {
       setErr(e?.message || "Preview failed.");
     } finally {
@@ -134,7 +168,6 @@ export default function SaveFromUrlPage() {
     }
   }
 
-  // auto-run preview once if opened with ?url=
   useEffect(() => {
     if (!incomingUrl) return;
     if (didAutoPreview) return;
@@ -192,7 +225,6 @@ export default function SaveFromUrlPage() {
     }
   }
 
-  // styling helpers (match Recipes motif)
   const pill =
     "inline-flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/15 px-6 py-3 font-semibold ring-1 ring-white/10 transition";
   const pillPrimary =
@@ -203,7 +235,6 @@ export default function SaveFromUrlPage() {
 
   return (
     <div className="min-h-screen bg-[#050816] text-white">
-      {/* Header banner */}
       <div className="relative overflow-hidden border-b border-white/10">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-40 -left-40 h-[420px] w-[420px] rounded-full bg-fuchsia-500/15 blur-3xl" />
@@ -218,22 +249,21 @@ export default function SaveFromUrlPage() {
                 <span className="inline-block align-middle ml-2 h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_30px_rgba(232,121,249,0.35)]" />
               </h1>
               <p className="mt-3 text-white/75 text-lg">
-                Paste a link. I'll yank out the good parts. You keep control.
+                Paste a link. I&apos;ll do my best, then let you review it before saving.
               </p>
               <div className="mt-2 text-white/45 text-sm">
-                Preview first, edit anything, then save to your vault.
+                Imported where possible. Cleaned where safe. Flagged when it needs human eyes.
               </div>
             </div>
 
             <Link href="/recipes" className={pill}>
-              † Back to recipes
+              ← Back to recipes
             </Link>
           </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-10">
-        {/* URL input panel */}
         <div className={card}>
           <div className="text-sm font-bold text-white/90">Recipe URL</div>
 
@@ -252,7 +282,7 @@ export default function SaveFromUrlPage() {
               className={`${pillPrimary} ${!canPreview || loading ? "opacity-50 cursor-not-allowed" : ""}`}
               title={!canPreview ? "Paste a link first" : "Preview this link"}
             >
-              {loading ? "Fetching€¦" : "Fetch it"}
+              {loading ? "Fetching..." : "Fetch it"}
             </button>
 
             <button
@@ -274,32 +304,92 @@ export default function SaveFromUrlPage() {
 
           {!preview && !err ? (
             <div className="mt-4 text-sm text-white/60">
-              Tip: if the site is dramatic and blocks scraping, try the Paste option instead.
+              Tip: recipe sites usually work best. If a site blocks import, you can still save the link and fill in the recipe manually.
             </div>
           ) : null}
         </div>
 
-        {/* Editor + preview */}
+        {preview ? (
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-bold text-white/90">Title</div>
+                <ReviewBadge state={preview.review?.title} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-bold text-white/90">Ingredients</div>
+                <ReviewBadge state={preview.review?.ingredients} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-bold text-white/90">Instructions</div>
+                <ReviewBadge state={preview.review?.instructions} />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {preview?.warnings?.length ? (
+          <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-5 text-amber-50">
+            <div className="font-bold">Needs attention</div>
+            <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-amber-100/90">
+              {preview.warnings.map((warning, idx) => (
+                <li key={`${warning}-${idx}`}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {preview?.notes?.length ? (
+          <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-5 text-cyan-50">
+            <div className="font-bold">Import notes</div>
+            <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-cyan-100/90">
+              {preview.notes.map((note, idx) => (
+                <li key={`${note}-${idx}`}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {preview?.blocked ? (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5 text-white/85">
+            <div className="font-bold">Automatic import was blocked</div>
+            <div className="mt-2 text-sm text-white/65">
+              The link is still attached. You can paste ingredients and steps manually, then approve and save.
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
-          {/* Left: editable fields */}
           <div className={card}>
-            <h2 className="text-2xl font-extrabold tracking-tight">What you'll save</h2>
+            <h2 className="text-2xl font-extrabold tracking-tight">What you&apos;ll save</h2>
             <p className="mt-2 text-white/70 text-sm">
-              Edit anything. Delete anything. Make it yours.
+              Edit anything. Delete anything. Approve only what looks right.
             </p>
 
             <div className="mt-5">
-              <label className="block font-bold text-white/90 mb-2">Title</label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block font-bold text-white/90">Title</label>
+                <ReviewBadge state={preview?.review?.title} />
+              </div>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Give it a name you'll recognize later"
+                placeholder="Give it a name you&apos;ll recognize later"
                 className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none text-white placeholder:text-white/40 focus:ring-2 focus:ring-fuchsia-400/50"
               />
             </div>
 
             <div className="mt-5">
-              <label className="block font-bold text-white/90 mb-2">Description (optional)</label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block font-bold text-white/90">Description (optional)</label>
+                <ReviewBadge state={preview?.review?.description} />
+              </div>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -310,7 +400,10 @@ export default function SaveFromUrlPage() {
             </div>
 
             <div className="mt-5">
-              <label className="block font-bold text-white/90 mb-2">Ingredients</label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block font-bold text-white/90">Ingredients</label>
+                <ReviewBadge state={preview?.review?.ingredients} />
+              </div>
               <textarea
                 value={ingredientsText}
                 onChange={(e) => setIngredientsText(e.target.value)}
@@ -321,16 +414,19 @@ export default function SaveFromUrlPage() {
             </div>
 
             <div className="mt-5">
-              <label className="block font-bold text-white/90 mb-2">Instructions / Steps</label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block font-bold text-white/90">Instructions / Steps</label>
+                <ReviewBadge state={preview?.review?.instructions} />
+              </div>
               <textarea
                 value={instructionsText}
                 onChange={(e) => setInstructionsText(e.target.value)}
                 rows={10}
-                placeholder="Steps, notes, or chaos €” we'll format it."
+                placeholder="Steps, notes, or chaos. We&apos;ll format it."
                 className="w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none text-white placeholder:text-white/40 focus:ring-2 focus:ring-fuchsia-400/50 resize-y"
               />
               <div className="mt-2 text-xs text-white/50">
-                Tip: blank lines become separate steps. Or just paste and let it ride.
+                Tip: blank lines become separate steps. Or just paste and clean up only what matters.
               </div>
             </div>
 
@@ -342,27 +438,27 @@ export default function SaveFromUrlPage() {
                 className={`${pillPrimary} ${saveDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
                 title={saveDisabled ? "Preview or type a title first" : "Save this recipe"}
               >
-                {loading ? "Saving€¦" : "Save to vault"}
+                {loading ? "Saving..." : "Approve and save"}
               </button>
 
               <Link href="/recipes" className={pill}>
-                Cancel
+                Reject
               </Link>
             </div>
           </div>
 
-          {/* Right: preview */}
           <div className={card}>
-            <h2 className="text-2xl font-extrabold tracking-tight">
-              Preview
-            </h2>
+            <h2 className="text-2xl font-extrabold tracking-tight">Preview</h2>
             <p className="mt-2 text-white/70 text-sm">
-              This is how it'll look once it lives in your Recipes.
+              This is how it&apos;ll look once it lives in your Recipes.
             </p>
 
             <div className="mt-5 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
-              <div className="text-4xl font-extrabold tracking-tight">
-                {title.trim() || preview?.title || "€”"}
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="text-4xl font-extrabold tracking-tight">
+                  {title.trim() || preview?.title || ""}
+                </div>
+                <ReviewBadge state={preview?.review?.title} />
               </div>
 
               {preview?.source_url || url.trim() ? (
@@ -386,7 +482,11 @@ export default function SaveFromUrlPage() {
               <div className="mt-6 rounded-3xl bg-black/20 ring-1 ring-white/10 p-5">
                 <div className="grid gap-6 md:grid-cols-2">
                   <div>
-                    <h3 className="text-xl font-extrabold">Ingredients</h3>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-xl font-extrabold">Ingredients</h3>
+                      <ReviewBadge state={preview?.review?.ingredients} />
+                    </div>
+
                     {previewIngredients.length === 0 ? (
                       <div className="mt-3 text-white/60">No ingredients yet.</div>
                     ) : (
@@ -399,7 +499,11 @@ export default function SaveFromUrlPage() {
                   </div>
 
                   <div>
-                    <h3 className="text-xl font-extrabold">Instructions</h3>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-xl font-extrabold">Instructions</h3>
+                      <ReviewBadge state={preview?.review?.instructions} />
+                    </div>
+
                     {previewInstructions.length === 0 ? (
                       <div className="mt-3 text-white/60">No instructions yet.</div>
                     ) : (
@@ -425,4 +529,3 @@ export default function SaveFromUrlPage() {
     </div>
   );
 }
-

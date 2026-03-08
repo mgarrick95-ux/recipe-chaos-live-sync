@@ -1,4 +1,4 @@
-﻿// app/recipes/paste/page.tsx
+// app/recipes/paste/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -12,7 +12,7 @@ function normalizeText(s: string): string {
 function stripLinePrefix(line: string): string {
   let s = line.trim();
 
-  s = s.replace(/^[-*€¢€£–ª—¦]+\s+/, "");
+  s = s.replace(/^[-* - "£–ª—¦]+\s+/, "");
   s = s.replace(/^\[[ xX]\]\s+/, "");
   s = s.replace(/^\(?\d+\)?[.)]\s+/, "");
   s = s.replace(/^step\s+\d+[:\-]\s+/i, "");
@@ -50,7 +50,7 @@ function splitInstructions(block: string): string[] {
 
 function removeHeader(lines: string[], headerWords: string[]): string[] {
   if (lines.length === 0) return lines;
-  const first = lines[0].toLowerCase().replace(/[:\-€“€”]+$/g, "").trim();
+  const first = lines[0].toLowerCase().replace(/[:\-""]+$/g, "").trim();
   if (headerWords.includes(first)) return lines.slice(1);
   return lines;
 }
@@ -165,7 +165,7 @@ export default function PasteRecipePage() {
           </p>
         </div>
         <Link href="/recipes" style={{ textDecoration: "none" }}>
-          † Back to Recipes
+          ← Back to Recipes
         </Link>
       </div>
 
@@ -217,7 +217,7 @@ export default function PasteRecipePage() {
             <textarea
               value={ingredientsText}
               onChange={(e) => setIngredientsText(e.target.value)}
-              placeholder={`Example:\n€¢ 1 lb ground beef\n€¢ 1 tsp salt\n€¢ 2 cups shredded cheese`}
+              placeholder={`Example:\n -  1 lb ground beef\n -  1 tsp salt\n -  2 cups shredded cheese`}
               rows={14}
               style={{
                 width: "100%",
@@ -317,7 +317,7 @@ export default function PasteRecipePage() {
               opacity: canSave ? 1 : 0.6,
             }}
           >
-            {saving ? "Saving€¦" : "Save recipe"}
+            {saving ? "Saving..." : "Save recipe"}
           </button>
 
           <button
@@ -352,7 +352,7 @@ export default function PasteRecipePage() {
         <div style={{ marginTop: 12, opacity: 0.75, fontSize: 13, lineHeight: 1.4 }}>
           Parsing rules (simple + predictable):
           <ul style={{ marginTop: 6 }}>
-            <li>Bullets and numbering are stripped (€¢, -, 1., 1), Step 1:)</li>
+            <li>Bullets and numbering are stripped ( - , -, 1., 1), Step 1:)</li>
             <li>Ingredients split by lines</li>
             <li>Instructions split by blank lines if present; otherwise by lines</li>
             <li>We do not fetch anything from the URL in Phase 3B</li>
@@ -362,4 +362,8 @@ export default function PasteRecipePage() {
     </div>
   );
 }
+
+
+
+
 

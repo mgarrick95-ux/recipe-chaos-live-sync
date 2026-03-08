@@ -18,3 +18,4 @@ export function getOpenAIClient() {
   if (!key) throw new Error("OPENAI_API_KEY is missing");
   return new OpenAI({ apiKey: key });
 }
+

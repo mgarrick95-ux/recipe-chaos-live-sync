@@ -8,8 +8,8 @@ type IngredientLike =
 /**
  * Split ingredient text safely.
  *
- * Old behavior (bad): split on commas always -> truncates product names:
- *   "Everything But The Bagel Seasoning, to taste" -> "Everything But The Bagel Seasoning" + "to taste"
+ * Old behavior (bad): split on commas always → truncates product names:
+ *   "Everything But The Bagel Seasoning, to taste" → "Everything But The Bagel Seasoning" + "to taste"
  *   (sometimes even worse fragments depending on upstream formatting)
  *
  * New behavior (safer):
@@ -103,3 +103,5 @@ export function extractIngredientNamesFromAny(value: unknown): string[] {
 
 // Re-export for any legacy imports that still import normalizeName from this file
 export { normalizeName };
+
+

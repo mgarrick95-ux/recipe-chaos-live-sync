@@ -5,3 +5,4 @@ export default function ThemeInitScript() {
   // If you already store theme elsewhere, we can align later.
   return null;
 }
+

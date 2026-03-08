@@ -10,3 +10,7 @@ out/
 Thumbs.db
 .vscode/
 _quarantine/
+
+# local safety scratch
+_quarantine/
+

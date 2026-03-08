@@ -1,4 +1,4 @@
-﻿// app/recipes/photo/page.tsx
+// app/recipes/photo/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -198,7 +198,7 @@ export default function AddFromPhotoPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
           <Link href="/recipes" className={pill}>
-            † Back
+            ← Back
           </Link>
 
           <div className="flex items-center gap-3">
@@ -213,7 +213,7 @@ export default function AddFromPhotoPage() {
               disabled={saveDisabled}
               title={!parsed ? "Add a photo first" : "Save recipe"}
             >
-              {saveBusy ? "Saving€¦" : "Save recipe"}
+              {saveBusy ? "Saving..." : "Save recipe"}
             </button>
           </div>
         </div>
@@ -261,7 +261,7 @@ export default function AddFromPhotoPage() {
                   onClick={runOcr}
                   disabled={!file || busy}
                 >
-                  {busy ? `Reading€¦ ${progress}%` : "Read the photo"}
+                  {busy ? `Reading... ${progress}%` : "Read the photo"}
                 </button>
 
                 <button
@@ -271,7 +271,7 @@ export default function AddFromPhotoPage() {
                   disabled={!raw.trim() || aiBusy}
                   title={!raw.trim() ? "Read the photo first" : "Tidy the extracted text into a usable recipe"}
                 >
-                  {aiBusy ? "Tidying€¦" : "Tidy it up"}
+                  {aiBusy ? "Tidying..." : "Tidy it up"}
                 </button>
               </div>
 
@@ -280,7 +280,7 @@ export default function AddFromPhotoPage() {
               </div>
 
               {aiParsed ? (
-                <div className="mt-3 text-xs font-semibold text-emerald-300">Tidied œ…</div>
+                <div className="mt-3 text-xs font-semibold text-emerald-300">Tidied ...</div>
               ) : raw.trim() ? (
                 <div className="mt-3 text-xs text-white/60">Looks like I found a recipe.</div>
               ) : null}
@@ -299,7 +299,7 @@ export default function AddFromPhotoPage() {
                   setAiError(null);
                   setSaveError(null);
                 }}
-                placeholder="Text from the photo will appear here€¦"
+                placeholder="Text from the photo will appear here..."
               />
             </div>
 
@@ -344,7 +344,7 @@ export default function AddFromPhotoPage() {
                     disabled={saveDisabled}
                     title={!parsed ? "Add a photo first" : "Save recipe"}
                   >
-                    {saveBusy ? "Saving€¦" : "Save recipe"}
+                    {saveBusy ? "Saving..." : "Save recipe"}
                   </button>
                 </div>
               </div>
@@ -355,4 +355,7 @@ export default function AddFromPhotoPage() {
     </div>
   );
 }
+
+
+
 

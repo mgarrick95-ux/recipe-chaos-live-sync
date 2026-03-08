@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 
@@ -23,7 +23,7 @@ export default function AddRecipeHubPage() {
 
           <div className="flex items-center gap-3">
             <Link href="/recipes" className={pill}>
-              † Back to Recipes
+              ← Back to Recipes
             </Link>
           </div>
         </div>
@@ -67,4 +67,7 @@ export default function AddRecipeHubPage() {
     </div>
   );
 }
+
+
+
 
