@@ -184,8 +184,7 @@ function cleanTitle(raw: string, host: string | null): string {
     const right = parts[parts.length - 1];
 
     const hostLike =
-      host &&
-      right.toLowerCase().includes(host.toLowerCase().replace(/^www\./, ""));
+      !!host && right.toLowerCase().includes(host.toLowerCase().replace(/^www\./, ""));
 
     const rightLooksLikeSite =
       right.length <= 30 &&
@@ -293,11 +292,13 @@ type FetchAttempt = {
   mode: "direct" | "fallback";
 };
 
+const DESKTOP_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
+
 async function fetchDirect(url: string): Promise<FetchAttempt> {
   const res = await fetch(url, {
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+      "User-Agent": DESKTOP_USER_AGENT,
       Accept: "text/html,application/xhtml+xml",
     },
     redirect: "follow",
@@ -317,8 +318,7 @@ async function fetchFallback(url: string): Promise<FetchAttempt> {
 
   const res = await fetch(readerUrl, {
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+      "User-Agent": DESKTOP_USER_AGENT,
       Accept: "text/plain,text/html,*/*",
     },
     redirect: "follow",
@@ -377,6 +377,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
     const rawUrl = body?.url ? String(body.url) : "";
+
     if (!rawUrl) {
       return NextResponse.json({ error: "Missing url" }, { status: 400 });
     }
@@ -403,7 +404,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const directBlocked = !direct.ok && (direct.status === 402 || direct.status === 403 || direct.status === 404);
+    const directBlocked =
+      !direct.ok && (direct.status === 402 || direct.status === 403 || direct.status === 404);
     const directNotHelpful = direct.ok && !recipeNode;
 
     if (directBlocked || directNotHelpful) {
@@ -463,16 +465,18 @@ export async function POST(req: Request) {
       (metaDescMatch ? metaDescMatch[1] : null) ||
       null;
 
-    let ingredientsRaw = toStringArray(recipeNode?.recipeIngredient);
+    const ingredientsRaw = toStringArray(recipeNode?.recipeIngredient);
     let ingredients = humanizeIngredientLines(ingredientsRaw);
 
     let instructions = normalizeInstructions(recipeNode?.recipeInstructions);
 
     if ((!ingredients.length && !instructions.length) || (!recipeNode && usedMode === "fallback")) {
       const sectionParsed = parseSectionsFromText(html);
+
       if (!ingredients.length) {
         ingredients = humanizeIngredientLines(sectionParsed.ingredients || []);
       }
+
       if (!instructions.length) {
         instructions = sectionParsed.instructions || [];
       }
@@ -538,3 +542,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
