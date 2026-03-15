@@ -454,92 +454,6 @@ async function fetchFallback(url: string): Promise<FetchAttempt> {
   return { ok: res.ok, status: res.status, body, mode: "fallback" };
 }
 
-function isSeparatorLine(line: string): boolean {
-  return /^[-=]{3,}$/.test(line.trim());
-}
-
-function isMarkdownLinkLine(line: string): boolean {
-  const s = line.trim();
-  return /^\*?\s*\[[^\]]+\]\(https?:\/\/[^)]+\)\s*$/.test(s);
-}
-
-function isJunkTextLine(line: string): boolean {
-  const s = line.trim();
-  if (!s) return true;
-
-  if (isSeparatorLine(s)) return true;
-  if (isMarkdownLinkLine(s)) return true;
-
-  return (
-    /^!\[Image/i.test(s) ||
-    /^Add Photo\b/i.test(s) ||
-    /^Save$/i.test(s) ||
-    /^Rate$/i.test(s) ||
-    /^Print$/i.test(s) ||
-    /^Share$/i.test(s) ||
-    /^Close$/i.test(s) ||
-    /^Jump to Nutrition Facts$/i.test(s) ||
-    /^Keep Screen Awake$/i.test(s) ||
-    /^Local Offers$/i.test(s) ||
-    /^Oops!/i.test(s) ||
-    /^Follow Us$/i.test(s) ||
-    /^Newsletter Sign Up$/i.test(s) ||
-    /^Allrecipes Account$/i.test(s) ||
-    /^Magazine$/i.test(s) ||
-    /^Meals$/i.test(s) ||
-    /^Occasions$/i.test(s) ||
-    /^Cuisines$/i.test(s) ||
-    /^Kitchen Tips$/i.test(s) ||
-    /^News$/i.test(s) ||
-    /^Features$/i.test(s) ||
-    /^About Us$/i.test(s) ||
-    /^[#|]/.test(s)
-  );
-}
-
-function isIngredientScaleLine(line: string): boolean {
-  const s = line.trim().toLowerCase();
-  return s === "1/2x" || s === "1x" || s === "2x" || s === "3x";
-}
-
-function looksLikeIngredientLine(line: string): boolean {
-  const s = line.trim();
-  if (!s) return false;
-  if (isJunkTextLine(s)) return false;
-  if (isIngredientScaleLine(s)) return false;
-
-  return (
-    /^\d/.test(s) ||
-    /^(pinch|dash|to taste)\b/i.test(s) ||
-    /\b(cup|cups|tablespoon|tablespoons|tbsp|teaspoon|teaspoons|tsp|pound|pounds|lb|lbs|ounce|ounces|oz|gram|grams|g|kilogram|kg|package|packages|can|cans|slice|slices|clove|cloves)\b/i.test(s)
-  );
-}
-
-function isInstructionLine(line: string): boolean {
-  const s = line.trim();
-  if (!s) return false;
-  if (isJunkTextLine(s)) return false;
-
-  return /^\d+\.\s+/.test(s) || /^\d+\)\s+/.test(s) || s.length >= 20;
-}
-
-function isStopHeading(line: string): boolean {
-  const s = line.trim();
-  return (
-    /^Nutrition Facts/i.test(s) ||
-    /^Show Full Nutrition Label/i.test(s) ||
-    /^Ask the Community/i.test(s) ||
-    /^Reviews?/i.test(s) ||
-    /^Photos?/i.test(s) ||
-    /^You.ll Also Love/i.test(s) ||
-    /^Recommended/i.test(s) ||
-    /^Related/i.test(s) ||
-    /^Rate this/i.test(s) ||
-    /^My Review/i.test(s) ||
-    /^Did you make this recipe\?/i.test(s)
-  );
-}
-
 function parseSectionsFromText(raw: string): {
   title: string;
   ingredients: string[];
@@ -551,131 +465,28 @@ function parseSectionsFromText(raw: string): {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const lower = lines.map((l) => l.toLowerCase());
-
-  const bodyAnchorIdx = lower.findIndex((l) =>
-    /^(prep time:|cook time:|total time:|additional time:|active time:|yield:|servings:)$/.test(l)
-  );
-
-  function looksLikeBadTitle(line: string): boolean {
-    const s = line.trim();
-    return (
-      !s ||
-      s.length < 6 ||
-      s.length > 120 ||
-      /^\d/.test(s) ||
-      isMarkdownLinkLine(s) ||
-      isSeparatorLine(s) ||
-      /^ingredients$/i.test(s) ||
-      /^(instructions|directions|method|preparation|steps)$/i.test(s) ||
-      /^published on\b/i.test(s) ||
-      /^by\b/i.test(s) ||
-      /^by\[/i.test(s) ||
-      /^\(?\d+(\.\d+)?\)?$/.test(s) ||
-      /^\d+\s+review/i.test(s) ||
-      /^\d+\s+reviews/i.test(s) ||
-      /^\d+\s+photo/i.test(s) ||
-      /^\d+\s+photos/i.test(s) ||
-      /^save$/i.test(s) ||
-      /^rate$/i.test(s) ||
-      /^print$/i.test(s) ||
-      /^share$/i.test(s) ||
-      /^jump to nutrition facts$/i.test(s) ||
-      /^keep screen awake$/i.test(s)
-    );
-  }
-
-  const titleSearchStart = bodyAnchorIdx !== -1 ? Math.max(0, bodyAnchorIdx - 30) : 0;
-  const titleSearchEnd = bodyAnchorIdx !== -1 ? bodyAnchorIdx : Math.min(lines.length, 100);
-
-  function scoreTitleCandidate(line: string, idx: number): number {
-    const s = line.trim();
-    if (looksLikeBadTitle(s)) return -1000;
-
-    let score = 0;
-
-    if (s.length >= 12 && s.length <= 80) score += 30;
-    if (/^[A-Z]/.test(s)) score += 10;
-    if (/[A-Za-z]/.test(s) && !/[=:|]/.test(s)) score += 10;
-    if (!/\b(allrecipes|newsletter|follow us|about us|kitchen tips|ingredients|directions)\b/i.test(s)) score += 25;
-    if (/\b(and|with|recipe|biscuits|chicken|beef|pasta|salad|soup|cake|cookies|bread)\b/i.test(s)) score += 15;
-
-    const distFromAnchor = bodyAnchorIdx !== -1 ? Math.abs(bodyAnchorIdx - idx) : 0;
-    score += Math.max(0, 20 - distFromAnchor);
-
-    const next1 = lines[idx + 1] || "";
-    const next2 = lines[idx + 2] || "";
-    if (/^\d+(\.\d+)?$/.test(next1.trim()) || /^\(?\d+\)?\s+reviews?/i.test(next1.trim()) || /^\d+\s+photos?/i.test(next2.trim())) {
-      score += 20;
-    }
-
-    return score;
-  }
-
-  const titleCandidates = lines
-    .map((line, idx) => ({ line, idx }))
-    .filter(({ idx }) => idx >= titleSearchStart && idx < titleSearchEnd)
-    .filter(({ line }) => !looksLikeBadTitle(line))
-    .map(({ line, idx }) => ({ line, idx, score: scoreTitleCandidate(line, idx) }))
-    .sort((a, b) => b.score - a.score);
-
-  let title =
-    titleCandidates[0]?.line ||
-    lines.find((l) => !looksLikeBadTitle(l)) ||
+  const title =
+    lines.find((l) => l.length >= 6 && l.length <= 120 && !/^\d/.test(l)) ||
     "Clipped recipe";
 
-  const searchStart = bodyAnchorIdx !== -1 ? bodyAnchorIdx : 0;
+  const lower = lines.map((l) => l.toLowerCase());
 
-  const ingredientHeadingIndexes = lines
-    .map((line, idx) => ({ line, idx }))
-    .filter(({ line, idx }) => idx >= searchStart && /^ingredients$/i.test(line))
-    .map(({ idx }) => idx);
+  const ingKeys = ["ingredients"];
+  const insKeys = ["instructions", "directions", "method", "preparation", "steps"];
 
-  const instructionHeadingIndexes = lines
-    .map((line, idx) => ({ line, idx }))
-    .filter(({ line, idx }) => idx >= searchStart && /^(instructions|directions|method|preparation|steps)$/i.test(line))
-    .map(({ idx }) => idx);
-
-  let ingredientIdx = -1;
-  let instructionIdx = -1;
-
-  for (const insIdx of instructionHeadingIndexes) {
-    const candidates = ingredientHeadingIndexes.filter((i) => i < insIdx);
-    if (candidates.length) {
-      ingredientIdx = candidates[candidates.length - 1];
-      instructionIdx = insIdx;
-      break;
-    }
-  }
+  const ingIdx = lower.findIndex((l) => ingKeys.some((k) => l === k || l.includes(k)));
+  const insIdx = lower.findIndex((l) => insKeys.some((k) => l === k || l.includes(k)));
 
   const ingredients: string[] = [];
   const instructions: string[] = [];
 
-  if (ingredientIdx !== -1 && instructionIdx !== -1 && instructionIdx > ingredientIdx) {
-    for (const line of lines.slice(ingredientIdx + 1, instructionIdx)) {
-      if (isSeparatorLine(line)) continue;
-      if (isIngredientScaleLine(line)) continue;
-      if (!looksLikeIngredientLine(line)) continue;
-      ingredients.push(line.replace(/^\*\s+/, "").trim());
-    }
-
-    for (const line of lines.slice(instructionIdx + 1)) {
-      if (isStopHeading(line)) break;
-      if (isSeparatorLine(line)) continue;
-      if (!isInstructionLine(line)) continue;
-
-      const cleaned = line
-        .replace(/^\d+[.)]\s*/, "")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      if (cleaned) instructions.push(cleaned);
-    }
+  if (ingIdx !== -1 && insIdx !== -1 && insIdx > ingIdx) {
+    ingredients.push(...lines.slice(ingIdx + 1, insIdx));
+    instructions.push(...lines.slice(insIdx + 1));
   } else {
-    for (const line of lines) {
-      if (isStopHeading(line)) break;
-      if (/^\d+[.)]\s+/.test(line)) {
-        instructions.push(line.replace(/^\d+[.)]\s*/, "").trim());
+    for (const l of lines) {
+      if (/^\d+[\).\s]/.test(l)) {
+        instructions.push(l.replace(/^\d+[\).\s]*/, "").trim());
       }
     }
   }
@@ -795,7 +606,7 @@ export async function POST(req: Request) {
       /<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i
     );
 
-    let rawTitle =
+    const rawTitle =
       (recipeNode?.name ? String(recipeNode.name) : null) ||
       (titleMatch ? stripHtml(titleMatch[1]) : null) ||
       `Clipped recipe (${host || "site"})`;
@@ -812,14 +623,6 @@ export async function POST(req: Request) {
 
     if ((!ingredients.length && !instructions.length) || (!recipeNode && usedMode === "fallback")) {
       const sectionParsed = parseSectionsFromText(html);
-
-      if (
-        (!rawTitle || /^Clipped recipe\b/i.test(rawTitle)) &&
-        sectionParsed.title &&
-        !/^Clipped recipe\b/i.test(sectionParsed.title)
-      ) {
-        rawTitle = sectionParsed.title;
-      }
 
       if (!ingredients.length) {
         ingredients = humanizeIngredientLines(sectionParsed.ingredients || []);
@@ -890,8 +693,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
-
-
-

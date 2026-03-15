@@ -257,7 +257,7 @@ export default function SaveFromUrlPage() {
             </div>
 
             <Link href="/recipes" className={pill}>
-              ← Back to recipes
+              Ã¢â€ Â Back to recipes
             </Link>
           </div>
         </div>
@@ -529,3 +529,4 @@ export default function SaveFromUrlPage() {
     </div>
   );
 }
+
