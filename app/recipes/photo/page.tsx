@@ -250,7 +250,7 @@ export default function AddFromPhotoPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
           <Link href="/recipes" className={pill}>
-            ← Back
+            Back
           </Link>
 
           <div className="flex items-center gap-3">
@@ -445,6 +445,7 @@ async function preprocessImageForOCR(file: File): Promise<string> {
 
   return canvas.toDataURL("image/png");
 }
+
 
 
 
