@@ -307,6 +307,11 @@ export default function AddFromPhotoPage() {
                   onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
                   className="text-sm"
                 />
+{files.length > 0 && (
+  <div className="text-xs text-emerald-300 font-semibold">
+    {files.length} photo{files.length > 1 ? "s" : ""} ready to scan
+  </div>
+)}
 
                 <button
                   type="button"
@@ -445,6 +450,7 @@ async function preprocessImageForOCR(file: File): Promise<string> {
 
   return canvas.toDataURL("image/png");
 }
+
 
 
 
