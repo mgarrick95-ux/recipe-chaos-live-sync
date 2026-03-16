@@ -6,6 +6,7 @@ import { Amatic_SC, Inter } from "next/font/google";
 
 import { UIPrefsProvider } from "@/components/UIPrefsProvider";
 import Sidebar from "@/components/Sidebar";
+import BottomNav from "@/components/BottomNav";
 import ThemeInitScript from "@/components/ThemeInitScript";
 
 const inter = Inter({
@@ -44,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <ThemeInitScript />
         <UIPrefsProvider>
-          <div className="min-h-screen">
+          <div className="min-h-screen pb-20 md:pb-0">
             <div className="mx-auto max-w-[1600px]">
               <div className="grid min-h-screen grid-cols-1 md:grid-cols-[280px_1fr]">
                 {/* Sidebar: desktop only */}
@@ -61,9 +62,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
           </div>
-        </UIPrefsProvider>
+
+{/* Mobile Navigation */}
+<div className="md:hidden">
+  <BottomNav />
+</div>
+
+</UIPrefsProvider>
       </body>
     </html>
   );
 }
+
 

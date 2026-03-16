@@ -58,7 +58,7 @@ export default function AddRecipeInlineMenu({
     "inline-flex items-center justify-center rounded-full",
     "px-4 py-2.5 text-sm font-semibold",
     "text-white bg-white/10 hover:bg-white/16",
-    "ring-1 ring-white/10 transition whitespace-nowrap",
+    "ring-1 ring-white/10 transition ",
     "focus:outline-none focus:ring-2 focus:ring-white/30",
   ].join(" ");
 
@@ -79,7 +79,7 @@ export default function AddRecipeInlineMenu({
         <div
           role="menu"
           aria-label="Add recipe options"
-          className="absolute right-0 top-full z-50 mt-3 flex gap-2 rounded-full bg-[#0b1026]/92 px-3 py-3 backdrop-blur-md ring-1 ring-white/12 shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+          className="absolute right-0 top-full z-50 mt-3 flex flex-wrap gap-2 rounded-2xl bg-[#0b1026]/92 px-3 py-3 backdrop-blur-md ring-1 ring-white/12 shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         >
           <Link
             href={hrefTypeIt}

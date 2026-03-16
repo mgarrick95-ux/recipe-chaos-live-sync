@@ -21,7 +21,7 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-black/60 backdrop-blur-xl">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-black/60 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
       <div className="mx-auto max-w-6xl px-3">
         <div className="flex items-center justify-between py-2">
           {items.map((it) => {
@@ -50,4 +50,5 @@ export default function BottomNav() {
     </nav>
   );
 }
+
 

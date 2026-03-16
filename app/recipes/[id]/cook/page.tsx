@@ -501,7 +501,7 @@ export default function CookPage() {
   if (error || !recipe) {
     return (
       <div className="min-h-screen bg-[#050816] text-white">
-        <div className="max-w-6xl mx-auto px-4 py-10">
+        <div className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
           <div className="rounded-2xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">
             {error ?? "Recipe not available"}
           </div>
@@ -523,7 +523,7 @@ export default function CookPage() {
                 All recipes
               </Link>
 
-              {ingredients.length > 0 ? (
+              {false ? (
                 <button
                   type="button"
                   onClick={() => setIngredientsOpen(true)}
@@ -562,12 +562,67 @@ export default function CookPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-10">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">{recipe.title || "Recipe"}</h1>
+      <div className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
+        <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">{recipe.title || "Recipe"}</h1>
         {recipe.description ? <p className="mt-3 max-w-2xl text-white/75">{recipe.description}</p> : null}
 
+        {ingredients.length > 0 ? (
+          <div className="mt-6 md:hidden">
+            <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-extrabold">This step</h2>
+                <div className="text-xs text-white/50">
+                  {ingredientSections.upNext.length} needed
+                </div>
+              </div>
+
+              <div className="mt-3">
+                {ingredientSections.upNext.length > 0 ? (
+                  <ul className="space-y-2">
+                    {ingredientSections.upNext.map((row) => (
+                      <li
+                        key={row.idx}
+                        className="flex items-start gap-3 rounded-2xl bg-teal-500/10 ring-1 ring-teal-400/30 px-3 py-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!checkedIngredients[row.idx]}
+                          onChange={(e) =>
+                            setCheckedIngredients((prev) => ({
+                              ...prev,
+                              [row.idx]: e.target.checked,
+                            }))
+                          }
+                          className="mt-0.5 h-5 w-5 accent-teal-500"
+                        />
+                        <span className={checkedIngredients[row.idx] ? "text-white/45 line-through" : "text-white/90"}>
+                          {row.text}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="rounded-2xl bg-black/20 ring-1 ring-white/10 px-3 py-3 text-sm text-white/65">
+                    No ingredients called out in this step.
+                  </div>
+                )}
+              </div>
+
+              <details className="mt-4 rounded-2xl bg-black/20 ring-1 ring-white/10">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-white/85">
+                  See all ingredients
+                </summary>
+
+                <div className="border-t border-white/10 px-4 py-4">
+                  <IngredientList compact />
+                </div>
+              </details>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-8 grid gap-6 md:grid-cols-[1fr_360px]">
-          <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-7 md:p-10 shadow-lg shadow-black/20">
+          <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 md:p-10 shadow-lg shadow-black/20">
             {totalSteps === 0 ? (
               <div className="text-white/70">No steps available.</div>
             ) : (
@@ -576,7 +631,7 @@ export default function CookPage() {
                   STEP {stepIndex + 1} OF {totalSteps}
                 </div>
 
-                <div className="rounded-3xl bg-black/30 ring-1 ring-white/10 p-6 md:p-8">
+                <div className="rounded-3xl bg-black/30 ring-1 ring-white/10 p-4 md:p-8">
                   <div className="text-xl md:text-2xl leading-relaxed text-white/90">{steps[stepIndex]}</div>
                 </div>
               </>
@@ -601,7 +656,7 @@ export default function CookPage() {
             ) : null}
           </div>
 
-          {ingredients.length > 0 ? (
+          {false ? (
             <aside className="hidden md:block">
               <div className="sticky top-[88px] rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
                 <div className="flex items-center justify-between">
@@ -639,7 +694,7 @@ export default function CookPage() {
       </div>
 
       {/* Drawer kept */}
-      {ingredients.length > 0 ? (
+      {false ? (
         <>
           {ingredientsOpen ? (
             <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setIngredientsOpen(false)} />
@@ -692,4 +747,8 @@ export default function CookPage() {
     </div>
   );
 }
+
+
+
+
 

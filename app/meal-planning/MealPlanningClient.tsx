@@ -1131,7 +1131,7 @@ export default function MealPlanningClient() {
 
   const header = (
     <div className="mt-2">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-4xl font-extrabold">{pageTitle}</h1>
           <div className="text-sm opacity-70">
@@ -1140,7 +1140,7 @@ export default function MealPlanningClient() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-stretch gap-2 lg:items-center">
           <button
             type="button"
             onClick={() => goToWeek(addDays(weekStart, -7))}
@@ -1327,7 +1327,7 @@ export default function MealPlanningClient() {
 
               return (
                 <div key={slot.slotId} className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex items-center gap-3">
                       <div className="font-extrabold text-white">Meal {idx + 1}</div>
 
@@ -1349,12 +1349,12 @@ export default function MealPlanningClient() {
 
                       {uncertainMain ? (
                         <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-extrabold text-white ring-1 ring-white/10">
-                          Not sure what this is [emoji]¤¨
+                          Not sure what this is yet
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-wrap items-stretch gap-2 lg:items-center">
                       <button
                         type="button"
                         onClick={async () => {
@@ -1384,7 +1384,7 @@ export default function MealPlanningClient() {
                         className="rounded-full bg-emerald-400/20 hover:bg-emerald-400/25 px-4 py-2 text-xs font-extrabold ring-1 ring-white/10 transition disabled:opacity-50"
                         title="Mark cooked (and try to decrement pantry)"
                       >
-                        {slot.cooked ? "Cooked œ“" : "Mark cooked"}
+                        {slot.cooked ? "Cooked" : "Mark cooked"}
                       </button>
 
                       {main ? (
@@ -1415,7 +1415,7 @@ export default function MealPlanningClient() {
                     }}
                     className="mt-3 w-full rounded-2xl bg-black/20 p-3 text-white ring-1 ring-white/10"
                   >
-                    <option value="">" none "</option>
+                    <option value="">None</option>
 
                     <optgroup label="Good mains (auto-picked)">
                       {recipes
@@ -1430,7 +1430,7 @@ export default function MealPlanningClient() {
                         })
                         .map((rec) => (
                           <option key={rec.id} value={rec.id}>
-                            {rec.favorite ? "˜… " : ""}
+                            {rec.favorite ? "★ " : ""}
                             {rec.title}
                           </option>
                         ))}
@@ -1439,7 +1439,7 @@ export default function MealPlanningClient() {
                     <optgroup label="Everything else (allowed, but not auto-picked)">
                       {recipes.map((rec) => (
                         <option key={rec.id} value={rec.id}>
-                          {rec.favorite ? "˜… " : ""}
+                          {rec.favorite ? "★ " : ""}
                           {rec.title}
                         </option>
                       ))}
@@ -1454,7 +1454,7 @@ export default function MealPlanningClient() {
                           {side.title}
                         </Link>
                       ) : (
-                        <span className="text-white/50">" none "</span>
+                        <span className="text-white/50">None</span>
                       )
                     ) : (
                       <span className="text-white/50">Pick a main first</span>
@@ -1499,6 +1499,8 @@ export default function MealPlanningClient() {
     </RcPageShell>
   );
 }
+
+
 
 
 

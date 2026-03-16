@@ -204,7 +204,7 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
   // Defaults tuned for "clean cooking screen"
   const [showAllIfNoneReferenced, setShowAllIfNoneReferenced] = useState(false);
   const [highlightIngredientsInStep, setHighlightIngredientsInStep] = useState(true);
-  const [showFullIngredientChecklist, setShowFullIngredientChecklist] = useState(false);
+  const [showFullIngredientChecklist, setShowFullIngredientChecklist] = useState(true);
 
   const hasSteps = steps.length > 0;
   const hasIngredients = ingredients.length > 0;
@@ -269,7 +269,7 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
     >
       {/* Controls row */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", opacity: 0.95 }}>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+        <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer", padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.06)", minHeight: 44 }}>
           <input
             type="checkbox"
             checked={showAllIfNoneReferenced}
@@ -278,7 +278,7 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
           Show all ingredients when none referenced
         </label>
 
-        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+        <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer", padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.06)", minHeight: 44 }}>
           <input
             type="checkbox"
             checked={highlightIngredientsInStep}
@@ -288,19 +288,40 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
         </label>
 
         {hasIngredients ? (
-          <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+          <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer", padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,0.06)", minHeight: 44 }}>
             <input
               type="checkbox"
               checked={showFullIngredientChecklist}
               onChange={(e) => setShowFullIngredientChecklist(e.target.checked)}
             />
-            Show full ingredient checklist
+            Show full ingredients list
           </label>
         ) : null}
       </div>
 
+      {showFullIngredientChecklist && hasIngredients ? (
+        <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 16, padding: 16 }}>
+          <h2 style={{ fontSize: 24, margin: "0 0 10px 0" }}>Ingredients</h2>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {ingredients.map((ing, idx) => (
+              <label key={`${ing}-${idx}`} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(checked[idx])}
+                  onChange={(e) => toggleChecked(idx, e.target.checked)}
+                  style={{ marginTop: 4, width: 20, height: 20 }}
+                />
+                <span style={{ fontSize: 16, lineHeight: 1.35, opacity: checked[idx] ? 0.55 : 1 }}>
+                  {ing}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {/* Step panel */}
-      <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 16, padding: 16 }}>
+      <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 16, padding: 18 }}>
         <h2 style={{ fontSize: 28, margin: 0 }}>Steps</h2>
 
         {!hasSteps ? (
@@ -338,13 +359,13 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
                     {ingredientsToShowForStep.map((m) => (
                       <label
                         key={`step-ing-${m.idx}`}
-                        style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
+                        style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "6px 0" }}
                       >
                         <input
                           type="checkbox"
                           checked={Boolean(checked[m.idx])}
                           onChange={(e) => toggleChecked(m.idx, e.target.checked)}
-                          style={{ marginTop: 3 }}
+                          style={{ marginTop: 3, width: 20, height: 20, flex: "0 0 auto" }}
                         />
                         <span style={{ fontSize: 16, lineHeight: 1.35, opacity: checked[m.idx] ? 0.55 : 1 }}>
                           {m.original}
@@ -356,13 +377,13 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
               </div>
 
               {/* Step text */}
-              <div style={{ fontSize: 24, lineHeight: 1.35 }}>
+              <div style={{ fontSize: 22, lineHeight: 1.5 }}>
                 {highlightIngredientsInStep ? highlightText(activeText, highlightTokensForStep) : activeText}
               </div>
             </div>
 
             {/* Navigation */}
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
               <button
                 type="button"
                 onClick={() => setActiveStep((s) => Math.max(0, s - 1))}
@@ -401,12 +422,12 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {ingredients.map((ing, idx) => (
-                    <label key={`${ing}-${idx}`} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <label key={`${ing}-${idx}`} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "6px 0" }}>
                       <input
                         type="checkbox"
                         checked={Boolean(checked[idx])}
                         onChange={(e) => toggleChecked(idx, e.target.checked)}
-                        style={{ marginTop: 4 }}
+                        style={{ marginTop: 4, width: 20, height: 20, flex: "0 0 auto" }}
                       />
                       <span style={{ fontSize: 16, lineHeight: 1.35, opacity: checked[idx] ? 0.55 : 1 }}>
                         {ing}
@@ -464,3 +485,6 @@ export default function CookClient({ ingredients, steps }: { ingredients: string
     </div>
   );
 }
+
+
+

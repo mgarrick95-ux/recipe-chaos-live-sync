@@ -430,7 +430,7 @@ export default function RecipesPage() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search recipes..."
-                    className="w-[320px] max-w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
+                    className="w-full sm:w-[320px] max-w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
                   <div className="text-xs text-white/45">Searches titles, ingredients, and instructions. No judgment.</div>
                 </div>
@@ -438,7 +438,7 @@ export default function RecipesPage() {
                 <select
                   value={sortMode}
                   onChange={(e) => setSortMode(e.target.value as SortMode)}
-                  className="w-[220px] max-w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
+                  className="w-full sm:w-[220px] max-w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                 >
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
@@ -551,7 +551,7 @@ export default function RecipesPage() {
                         </button>
 
                         <Link href={`/recipes/${r.id}`} className="block">
-                          <h2 className="text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
+                          <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
 
                           {r.description ? <p className="mt-2 text-white/70 line-clamp-2">{r.description}</p> : null}
 
@@ -602,7 +602,7 @@ export default function RecipesPage() {
 
                           <Link
                             href={`/recipes/${r.id}/cook`}
-                            className="rounded-2xl bg-[var(--rc-accent-2)] hover:bg-[var(--rc-accent-2-hover)] px-5 py-3 font-extrabold text-white shadow-[0_12px_26px_rgba(34,211,238,0.18)]"
+                            className="w-full sm:w-auto rounded-2xl bg-[var(--rc-accent-2)] hover:bg-[var(--rc-accent-2-hover)] px-5 py-3 font-extrabold text-white shadow-[0_12px_26px_rgba(34,211,238,0.18)]"
                           >
                             Cook it now
                           </Link>
@@ -735,6 +735,10 @@ export default function RecipesPage() {
     </div>
   );
 }
+
+
+
+
 
 
 

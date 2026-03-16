@@ -270,6 +270,7 @@ export default function FrostPantryPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
+  const [hideOutItems, setHideOutItems] = useState(false);
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -502,8 +503,8 @@ export default function FrostPantryPage() {
         return items;
     }
   }, [items, activeFilter, soonishAll, expiredItems, duplicateCountById]);
-
-  const filteredIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
+  const visibleItems = useMemo(() => (hideOutItems ? filtered.filter((i) => !isOut(i)) : filtered), [filtered, hideOutItems]);
+  const filteredIds = useMemo(() => visibleItems.map((i) => i.id), [visibleItems]);
   const selectionCount = selectedIds.length;
 
   const selectedAllFiltered = useMemo(() => {
@@ -1329,8 +1330,8 @@ export default function FrostPantryPage() {
       <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 text-white">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm text-white/60">
-            Showing <span className="text-white/80 font-semibold">{filtered.length}</span> item
-            {filtered.length === 1 ? "" : "s"}.
+            Showing <span className="text-white/80 font-semibold">{visibleItems.length}</span> item
+            {visibleItems.length === 1 ? "" : "s"}.
             {activeFilter === "duplicates" ? <span className="ml-2 text-white/45">(duplicates view)</span> : null}
           </div>
 
@@ -1396,7 +1397,7 @@ export default function FrostPantryPage() {
       {/* Main list */}
       {loading ? (
         <div className="mt-8 text-white/70">Loading...</div>
-      ) : filtered.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="mt-8 text-white/55">
           <div className="font-semibold text-white/70">
             {activeFilter === "duplicates" ? "No duplicates right now." : "Nothing here yet."}
@@ -1409,7 +1410,7 @@ export default function FrostPantryPage() {
         </div>
       ) : (
         <div className="mt-8 grid gap-6">
-          {filtered.map((item) => {
+          {visibleItems.map((item) => {
             const checked = selectedSet.has(item.id);
             const expired = isExpired(item);
             const isEditing = editId === item.id;
@@ -1688,6 +1689,10 @@ function FilterPill({
     </button>
   );
 }
+
+
+
+
 
 
 
