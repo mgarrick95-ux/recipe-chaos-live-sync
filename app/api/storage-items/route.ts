@@ -23,7 +23,7 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json({ items: items ?? [] }, { status: 200 });
+    return NextResponse.json({ ok: true, items: items ?? [] }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
       { error: `500 ${ROUTE_PATH}: ${e?.message || "Unexpected error"}` },
