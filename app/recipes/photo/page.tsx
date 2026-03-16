@@ -63,11 +63,12 @@ const card = "rounded-3xl bg-white/5 ring-1 ring-white/10 p-6";
 export default function AddFromPhotoPage() {
   const router = useRouter();
 
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number>(0);
 
   const [raw, setRaw] = useState("");
+  const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [aiBusy, setAiBusy] = useState(false);
@@ -80,10 +81,10 @@ export default function AddFromPhotoPage() {
   const fallbackParsed = useMemo(() => (raw ? parseRecipeFromText(raw) : null), [raw]);
 
   // prefer AI result when available
-  const parsed = aiParsed || fallbackParsed;
+  const parsed = aiBusy ? null : aiParsed || fallbackParsed;
 
   async function runOcr() {
-    if (!file) return;
+    if (!files.length) return;
 
     setError(null);
     setAiError(null);
@@ -94,19 +95,70 @@ export default function AddFromPhotoPage() {
     setProgress(0);
 
     try {
-      const { data } = await Tesseract.recognize(file, "eng", {
-        logger: (m) => {
-          if (m.status === "recognizing text" && typeof m.progress === "number") {
-            setProgress(Math.round(m.progress * 100));
-          }
-        },
-      });
+      const chunks: string[] = [];
 
-      setRaw(data.text || "");
+      for (let i = 0; i < files.length; i++) {
+        const currentFile = files[i];
+        const processedImage = await preprocessImageForOCR(currentFile);
+
+        const { data } = await Tesseract.recognize(processedImage, "eng", {
+          logger: (m) => {
+            if (m.status === "recognizing text" && typeof m.progress === "number") {
+              const overallProgress = Math.round(((i + m.progress) / files.length) * 100);
+              setProgress(overallProgress);
+            }
+          },
+        });
+
+        const extractedText = (data.text || "").trim();
+        if (extractedText) {
+          chunks.push(extractedText);
+        }
+      }
+
+      const combinedText = chunks.join("\n\n--- Next photo ---\n\n");
+      setRaw(combinedText);
+
+      if (combinedText.trim()) {
+        await tidyText(combinedText);
+      }
     } catch (e: any) {
       setError(e?.message || "Couldn't read that photo.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function tidyText(nextRawText: string) {
+    const cleanRaw = (nextRawText || "").trim();
+    if (!cleanRaw) return;
+
+    setAiBusy(true);
+    setAiError(null);
+    setAiParsed(null);
+    setSaveError(null);
+
+    try {
+      const res = await fetch("/api/ai/recipe-from-ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawText: cleanRaw }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || `Cleanup failed (${res.status})`);
+
+      if (!json?.ok || !json?.recipe) throw new Error("Cleanup returned no recipe.");
+
+      setAiParsed({
+        title: json.recipe.title || "Untitled recipe",
+        ingredients: Array.isArray(json.recipe.ingredients) ? json.recipe.ingredients : [],
+        instructions: Array.isArray(json.recipe.instructions) ? json.recipe.instructions : [],
+      });
+    } catch (e: any) {
+      setAiError(e?.message || "Couldn't tidy that up.");
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -144,7 +196,7 @@ export default function AddFromPhotoPage() {
   }
 
   function clearAll() {
-    setFile(null);
+    setFiles([]);
     setRaw("");
     setError(null);
     setProgress(0);
@@ -245,13 +297,14 @@ export default function AddFromPhotoPage() {
           <div className="mt-7 grid grid-cols-1 gap-6">
             {/* Step 1 */}
             <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-              <div className="text-sm font-semibold text-white/85">1) Pick a photo</div>
+              <div className="text-sm font-semibold text-white/85">Add a photo</div>
 
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  multiple
+                  onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
                   className="text-sm"
                 />
 
@@ -259,9 +312,9 @@ export default function AddFromPhotoPage() {
                   type="button"
                   className={pillPrimary}
                   onClick={runOcr}
-                  disabled={!file || busy}
+                  disabled={!files.length || busy}
                 >
-                  {busy ? `Reading... ${progress}%` : "Read the photo"}
+                  {busy ? `Scanning... ${progress}%` : "Scan photo"}
                 </button>
 
                 <button
@@ -271,12 +324,12 @@ export default function AddFromPhotoPage() {
                   disabled={!raw.trim() || aiBusy}
                   title={!raw.trim() ? "Read the photo first" : "Tidy the extracted text into a usable recipe"}
                 >
-                  {aiBusy ? "Tidying..." : "Tidy it up"}
+                  {aiBusy ? "Re-running..." : "Re-run cleanup"}
                 </button>
               </div>
 
               <div className="mt-2 text-xs text-white/60">
-                Best results with clear text and good lighting.
+                Best results with clear text and good lighting. You can add more than one photo if the recipe spans multiple pages.
               </div>
 
               {aiParsed ? (
@@ -286,45 +339,30 @@ export default function AddFromPhotoPage() {
               ) : null}
             </div>
 
-            {/* OCR text */}
-            <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-              <div className="text-sm font-semibold text-white/85">2) Extracted text</div>
-
-              <textarea
-                className="mt-3 w-full min-h-[220px] rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/20"
-                value={raw}
-                onChange={(e) => {
-                  setRaw(e.target.value);
-                  setAiParsed(null);
-                  setAiError(null);
-                  setSaveError(null);
-                }}
-                placeholder="Text from the photo will appear here..."
-              />
-            </div>
+            
 
             {/* Preview */}
             {parsed ? (
               <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
-                <div className="text-sm font-semibold text-white/85">3) Preview</div>
+                <div className="text-sm font-semibold text-white/85">Review the recipe</div>
 
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <div className="text-xs font-semibold text-white/60">TITLE</div>
+                    <div className="text-xs font-semibold text-white/60">Recipe name</div>
                     <div className="mt-1 rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 text-sm">
                       {parsed.title}
                     </div>
                   </div>
 
                   <div>
-                    <div className="text-xs font-semibold text-white/60">INGREDIENTS</div>
+                    <div className="text-xs font-semibold text-white/60">Ingredients</div>
                     <pre className="mt-1 whitespace-pre-wrap rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 text-sm text-white">
                       {parsed.ingredients.join("\n")}
                     </pre>
                   </div>
 
                   <div>
-                    <div className="text-xs font-semibold text-white/60">INSTRUCTIONS</div>
+                    <div className="text-xs font-semibold text-white/60">Steps</div>
                     <pre className="mt-1 whitespace-pre-wrap rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 text-sm text-white">
                       {parsed.instructions.join("\n")}
                     </pre>
@@ -355,6 +393,76 @@ export default function AddFromPhotoPage() {
     </div>
   );
 }
+
+
+
+
+
+async function preprocessImageForOCR(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject("File read failed");
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject("Image load failed");
+    el.src = dataUrl;
+  });
+
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Canvas error");
+
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+
+    let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    gray = (gray - 128) * 1.6 + 128;
+
+    const v = gray > 165 ? 255 : 0;
+
+    d[i] = v;
+    d[i + 1] = v;
+    d[i + 2] = v;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  return canvas.toDataURL("image/png");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

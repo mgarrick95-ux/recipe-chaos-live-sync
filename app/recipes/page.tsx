@@ -375,7 +375,7 @@ export default function RecipesPage() {
           <AddRecipeInlineMenu
             hrefTypeIt="/recipes/add/manual"
             hrefLink="/recipes/add/url"
-            hrefPhoto="/recipes/add/photo"
+            hrefPhoto="/recipes/photo"
           />
         }
       >
@@ -735,6 +735,7 @@ export default function RecipesPage() {
     </div>
   );
 }
+
 
 
 
