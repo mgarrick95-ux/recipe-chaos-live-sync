@@ -63,14 +63,16 @@ export async function POST(req: Request) {
   }
 
   const quantityText = coerceQuantityToText(body?.quantity);
+  const isDerived = Boolean(body?.isDerived);
+  const forceNewRow = Boolean(body?.forceNewRow);
+
 
   const { data: existingRows, error: findErr } = await supabase
     .from("shopping_list_items")
     .select("*")
     .eq("user_id", DEFAULT_USER_ID)
     .eq("normalized_name", ident.normalizedName)
-    .eq("is_derived", false)
-    .order("created_at", { ascending: false })
+        .order("created_at", { ascending: false })
     .limit(1);
 
   if (findErr) {
@@ -80,18 +82,35 @@ export async function POST(req: Request) {
   const existing =
     Array.isArray(existingRows) && existingRows.length > 0 ? existingRows[0] : null;
 
-  if (existing) {
+  if (existing && !forceNewRow) {
+    const existingIsDerived = Boolean(existing.is_derived);
+
+    // Derived must never overwrite a manual item.
+    if (isDerived && !existingIsDerived) {
+      return NextResponse.json(
+        { item: existing },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const existingQty = Number(existing.quantity || "1");
+    const incomingQty = Number(quantityText || "1");
+    const nextQty = String(Math.max(1, existingQty + incomingQty));
+
+    // Manual duplicate of a derived item becomes manual.
+    const nextIsDerived = existingIsDerived && !isDerived ? false : existingIsDerived;
+
     const { data, error: updateErr } = await supabase
       .from("shopping_list_items")
       .update({
         name: ident.displayName,
         normalized_name: ident.normalizedName,
-        quantity: quantityText,
+        quantity: nextQty,
         checked: false,
         dismissed: false,
-        source_type: "manual",
+        source_type: nextIsDerived ? "derived" : "manual",
         source_recipe_id: null,
-        is_derived: false,
+        is_derived: nextIsDerived,
       })
       .eq("id", existing.id)
       .select("*")
@@ -117,9 +136,9 @@ export async function POST(req: Request) {
       unit: null,
       checked: false,
       dismissed: false,
-      source_type: "manual",
+      source_type: isDerived ? "derived" : "manual",
       source_recipe_id: null,
-      is_derived: false,
+      is_derived: isDerived,
     })
     .select("*")
     .single();
@@ -234,3 +253,14 @@ export async function DELETE(req: Request) {
     { headers: { "Cache-Control": "no-store" } }
   );
 }
+
+
+
+
+
+
+
+
+
+
+

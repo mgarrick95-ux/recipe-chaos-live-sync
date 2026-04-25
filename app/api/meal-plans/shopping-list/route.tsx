@@ -76,7 +76,7 @@ function supabaseFromCookies() {
   );
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     // ✅ Authenticated supabase (respects RLS, gets user.id)
     const supabase = supabaseFromCookies();
@@ -91,7 +91,12 @@ export async function POST() {
     }
 
     // Load this week's plan
-    const start = toISODate(startOfWeekMonday(new Date()));
+    const url = new URL(req.url);
+const startParam = url.searchParams.get("start");
+
+const start = startParam && !Number.isNaN(new Date(startParam).getTime())
+  ? toISODate(startOfWeekMonday(new Date(startParam)))
+  : toISODate(startOfWeekMonday(new Date()));
 
     // NOTE: Keeping your existing behavior (start_date only) to avoid schema assumptions.
     // If meal_plans has user_id, we should add `.eq("user_id", user.id)` later.
@@ -219,5 +224,9 @@ export async function POST() {
     );
   }
 }
+
+
+
+
 
 

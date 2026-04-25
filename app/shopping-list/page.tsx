@@ -1670,7 +1670,7 @@ export default function ShoppingListPage() {
     return { kind: "none" };
   }
 
-  async function addManualProceed(name: string) {
+  async function addManualProceed(name: string, forceNewRow = false) {
     closeAllPopovers();
     setStatus("Adding...");
 
@@ -1678,7 +1678,7 @@ export default function ShoppingListPage() {
       const res = await fetch("/api/shopping-list/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, quantity: 1 }),
+        body: JSON.stringify({ name, quantity: 1, forceNewRow }),
       });
 
       const json = await res.json().catch(() => null);
@@ -1873,7 +1873,31 @@ export default function ShoppingListPage() {
                 className={btn}
                 onClick={() => setAddDupPrompt(null)}
               >
-                No
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className={btn}
+                onClick={async () => {
+                  const prompt = addDupPrompt;
+                  if (!prompt) return;
+
+                  setAddDupPrompt(null);
+
+                  const id = prompt.existingId;
+                  const latest = items.find((x) => x.id === id);
+                  if (!latest) {
+                    await load();
+                    return;
+                  }
+
+                  setStatus("Updating...");
+                  await patchItem(id, { quantity: itemQty(latest) + 1 });
+                  setStatus("");
+                }}
+              >
+                Add to existing
               </button>
 
               <button
@@ -1884,25 +1908,10 @@ export default function ShoppingListPage() {
                   if (!prompt) return;
 
                   setAddDupPrompt(null);
-
-                  if (prompt.actionIfYes === "inc_existing") {
-                    const id = prompt.existingId;
-                    const latest = items.find((x) => x.id === id);
-                    if (!latest) {
-                      await load();
-                      return;
-                    }
-
-                    setStatus("Updating...");
-                    await patchItem(id, { quantity: itemQty(latest) + 1 });
-                    setStatus("");
-                    return;
-                  }
-
-                  await addManualProceed(prompt.requestedName);
+                  await addManualProceed(prompt.requestedName, true);
                 }}
               >
-                Yes
+                Keep separate
               </button>
             </div>
           </div>
@@ -2086,6 +2095,34 @@ export default function ShoppingListPage() {
                             >
                               <div className="text-sm md:text-base font-extrabold tracking-tight text-white/90 truncate">
                                 {displayName}
+                                {g.items.some((it) => (it.source_type || "").trim() === "derived") &&
+                                !g.items.some((it) => (it.source_type || "").trim() !== "derived") ? (
+                                  <span
+                                    className="ml-2 inline-flex items-center justify-center align-middle text-white/45"
+                                    title="From meal plan"
+                                    aria-label="From meal plan"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.9"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M8 2v4" />
+                                      <path d="M16 2v4" />
+                                      <rect x="3" y="4" width="18" height="17" rx="3" ry="3" />
+                                      <path d="M3 10h18" />
+                                      <path d="M8 14h.01" />
+                                      <path d="M12 14h.01" />
+                                      <path d="M16 14h.01" />
+                                    </svg>
+                                  </span>
+                                ) : null}
                               </div>
 
                               {meta ? (
@@ -2465,6 +2502,34 @@ export default function ShoppingListPage() {
                                 <div className="min-w-0">
                                   <div className="text-sm font-extrabold tracking-tight text-white/90">
                                     {displayName}
+                                {g.items.some((it) => (it.source_type || "").trim() === "derived") &&
+                                !g.items.some((it) => (it.source_type || "").trim() !== "derived") ? (
+                                  <span
+                                    className="ml-2 inline-flex items-center justify-center align-middle text-white/45"
+                                    title="From meal plan"
+                                    aria-label="From meal plan"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.9"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M8 2v4" />
+                                      <path d="M16 2v4" />
+                                      <rect x="3" y="4" width="18" height="17" rx="3" ry="3" />
+                                      <path d="M3 10h18" />
+                                      <path d="M8 14h.01" />
+                                      <path d="M12 14h.01" />
+                                      <path d="M16 14h.01" />
+                                    </svg>
+                                  </span>
+                                ) : null}
                                   </div>
                                   <div className="mt-1 text-xs text-white/55">
                                     Source only.
@@ -2781,3 +2846,10 @@ export default function ShoppingListPage() {
     </RcPageShell>
   );
 }
+
+
+
+
+
+
+

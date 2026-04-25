@@ -1,5 +1,6 @@
 // app/api/receipt/parse/route.ts
 import { NextResponse } from "next/server";
+import { getModel, getOpenAIClient } from "@/lib/openaiServer";
 
 export const runtime = "nodejs";
 
@@ -63,15 +64,17 @@ function isJunkLine(s: string) {
     /(write a review|return eligible|delivered|shipping|pickup|substitution|substituted|out of stock|out-of-stock|sold by|fulfilled by|customer service|support|thanks for your order)/i.test(
       t
     )
-  )
+  ) {
     return true;
+  }
 
   if (
     /(discount price|was\s+\$?\d|you saved|from savings|from discounts|coupon|promo|promotion|deal|rollback|price drop)/i.test(
       t
     )
-  )
+  ) {
     return true;
+  }
 
   if (looksLikePriceOnly(t)) return true;
 
@@ -99,7 +102,7 @@ function parseTextToItems(raw: string): ParsedReceiptItem[] {
     let quantity = 1;
     let name = line;
 
-    const m1 = line.match(/^\s*(\d+)\s*[xÃ—]\s*(.+)$/i);
+    const m1 = line.match(/^\s*(\d+)\s*[x×]\s*(.+)$/i);
     if (m1) {
       quantity = Math.max(1, Number(m1[1]));
       name = m1[2].trim();
@@ -109,7 +112,7 @@ function parseTextToItems(raw: string): ParsedReceiptItem[] {
         quantity = Math.max(1, Number(m2[1]));
         name = m2[2].trim();
       } else {
-        const m3 = line.match(/^(.+?)\s+[xÃ—]\s*(\d+)\s*$/i);
+        const m3 = line.match(/^(.+?)\s+[x×]\s*(\d+)\s*$/i);
         if (m3) {
           name = m3[1].trim();
           quantity = Math.max(1, Number(m3[2]));
@@ -147,18 +150,66 @@ function printableRatio(text: string) {
   return printable / Math.max(1, text.length);
 }
 
+function guessMimeFromName(name: string) {
+  const lower = (name || "").toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".heic")) return "image/heic";
+  return "application/octet-stream";
+}
+
+async function imageToTextWithOpenAI(file: File): Promise<string> {
+  const client = getOpenAIClient();
+  const mime = (file.type || guessMimeFromName(file.name || "")).toLowerCase();
+  const ab = await file.arrayBuffer();
+  const base64 = Buffer.from(ab).toString("base64");
+  const dataUrl = `data:${mime};base64,${base64}`;
+
+  const response = await client.responses.create({
+    model: getModel("smart"),
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "Read this grocery receipt image and return only likely purchased grocery or household item lines as plain text, one item per line. " +
+              "Do not include store name, address, phone number, dates, times, cashier info, loyalty text, payment method, subtotal, tax, total, change, thank-you text, promo text, or other receipt junk. " +
+              "Keep only the purchased product lines. Do not explain. Do not summarize. Do not format as JSON.",
+          },
+          {
+            type: "input_image",
+            image_url: dataUrl,
+            detail: "auto",
+          },
+        ],
+      },
+    ],
+  });
+
+  const text = String((response as any).output_text || "").trim();
+  return text;
+}
+
 async function fileToText(file: File): Promise<{ text: string; kind: string }> {
   const mime = (file.type || "").toLowerCase();
   const name = (file.name || "").toLowerCase();
   const ab = await file.arrayBuffer();
   const buf = Buffer.from(ab);
 
-  // Images: OCR not wired (yet)
   if (mime.startsWith("image/") || /\.(png|jpg|jpeg|webp|gif|heic)$/i.test(name)) {
-    return { text: "", kind: "image" };
+    try {
+      const text = await imageToTextWithOpenAI(file);
+      return { text, kind: text ? "image_ocr" : "image_ocr_empty" };
+    } catch (e) {
+      console.error("[receipt/parse] image OCR failed:", e);
+      return { text: "", kind: "image_ocr_error" };
+    }
   }
 
-  // PDFs: dynamic import so pdf-parse can't crash the module for paste-mode
   if (mime === "application/pdf" || name.endsWith(".pdf")) {
     try {
       const mod: any = await import("pdf-parse");
@@ -172,7 +223,6 @@ async function fileToText(file: File): Promise<{ text: string; kind: string }> {
     }
   }
 
-  // Text-ish: decode and reject obvious binary
   const text = buf.toString("utf8").trim();
   if (!text) return { text: "", kind: "empty" };
 
@@ -187,7 +237,6 @@ export async function POST(req: Request) {
   const contentType = req.headers.get("content-type") || "";
 
   try {
-    // JSON: { text }
     if (contentType.includes("application/json")) {
       const body = (await req.json().catch(() => null)) as any;
       const text = String(body?.text || "").trim();
@@ -201,12 +250,11 @@ export async function POST(req: Request) {
 
       const items = parseTextToItems(text);
 
-      // IMPORTANT: never 500 for "no items found"
       if (items.length === 0) {
         return NextResponse.json(
           {
             items: [],
-            message: "I Couldn't find item-like lines in that text.",
+            message: "I couldn't find item-like lines in that text.",
             debug: { mode: "json", extractedTextChars: text.length, contentType },
           },
           { status: 200 }
@@ -219,7 +267,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Multipart: files
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
       const files = form.getAll("files").filter(Boolean) as File[];
@@ -246,15 +293,14 @@ export async function POST(req: Request) {
 
       const joined = texts.join("\n\n").trim();
 
-      // ... Fully wired behavior: scanned/malformed PDFs/images return 200 + message, never 500
       if (!joined) {
-        const isImage = kinds.some((k) => k === "image");
+        const isImage = kinds.some((k) => k.startsWith("image"));
         const isPdf = kinds.some((k) => k === "pdf" || k === "pdf_error");
         const msg = isImage
-          ? "That looks like an image receipt. OCR isn't wired yet, so I can't read it."
+          ? "I tried OCR on that image, but couldn't pull usable receipt text."
           : isPdf
-            ? "I Couldn't read text from that PDF. If it's scanned, OCR isn't wired yet. If it's a normal PDF, it may be malformed."
-            : "I Couldn't read text from that file. If it's a scan/image, OCR isn't wired yet.";
+            ? "I couldn't read text from that PDF. If it's scanned, OCR may still be needed. If it's a normal PDF, it may be malformed."
+            : "I couldn't read text from that file.";
 
         return NextResponse.json(
           {
@@ -310,7 +356,11 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { items: [], error: "Unsupported content type. Use JSON {text} or multipart files.", debug: { contentType } },
+      {
+        items: [],
+        error: "Unsupported content type. Use JSON {text} or multipart files.",
+        debug: { contentType },
+      },
       { status: 415 }
     );
   } catch (e: any) {
@@ -321,7 +371,5 @@ export async function POST(req: Request) {
     );
   }
 }
-
-
 
 
