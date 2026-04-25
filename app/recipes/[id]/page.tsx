@@ -147,6 +147,24 @@ export default async function RecipeDetailPage({ params }: PageProps) {
   const ingredients = toStringArrayBasic(recipe.ingredients);
   const instructions = parseInstructions(recipe.instructions ?? recipe.steps);
 
+  let pantryMatch: any = null;
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/recipes/${recipe.id}/pantry-match`,
+      { cache: "no-store" }
+    );
+    pantryMatch = await res.json();
+  } catch {
+    pantryMatch = null;
+  }
+
+  const matchMap = new Map<string, "matched" | "partial" | "missing">();
+
+  if (pantryMatch?.ok) {
+    pantryMatch.matched.forEach((i: any) => matchMap.set(i.ingredient, "matched"));
+    pantryMatch.partial.forEach((i: any) => matchMap.set(i.ingredient, "partial"));
+    pantryMatch.missing.forEach((i: any) => matchMap.set(i.ingredient, "missing"));
+  }
   return (
     <div className="min-h-screen bg-[#050816] text-white">
       <div className="max-w-6xl mx-auto px-4 py-10">
@@ -215,7 +233,22 @@ export default async function RecipeDetailPage({ params }: PageProps) {
                 ) : (
                   <ul className="mt-4 list-disc pl-5 leading-relaxed text-white/85">
                     {ingredients.map((ing, idx) => (
-                      <li key={`${ing}-${idx}`}>{ing}</li>
+                      <li key={`${ing}-${idx}`} className="flex gap-2">
+  <span className={
+    matchMap.get(ing) === "matched" ? "text-green-400" :
+    matchMap.get(ing) === "partial" ? "text-yellow-400" :
+    matchMap.get(ing) === "missing" ? "text-red-400" :
+    "text-white/40"
+  }>
+    {matchMap.get(ing) === "matched" ? "✓" :
+     matchMap.get(ing) === "partial" ? "?" :
+     matchMap.get(ing) === "missing" ? <span className="text-xs">✕</span> : "•"}
+  </span>
+
+  <span className="text-white/85">
+    {ing}
+  </span>
+</li>
                     ))}
                   </ul>
                 )}
@@ -253,3 +286,18 @@ export default async function RecipeDetailPage({ params }: PageProps) {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
