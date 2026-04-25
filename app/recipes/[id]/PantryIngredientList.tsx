@@ -65,7 +65,17 @@ export default function PantryIngredientList({ ingredients, matchEntries }: Prop
                     : "•"}
             </span>
 
-            <span className={isAdded ? "text-green-400" : "text-white/85"}>{ing}</span>
+            <span className="flex items-center gap-2">
+  <span className={isAdded ? "text-green-400" : "text-white/85"}>
+    {ing}
+  </span>
+
+  {isAdded ? (
+    <span className="text-xs text-green-400 opacity-80">
+      Added
+    </span>
+  ) : null}
+</span>
           </li>
         );
       })}
