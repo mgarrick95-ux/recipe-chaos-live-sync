@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import DeleteRecipeButton from "./DeleteRecipeButton";
+import PantryIngredientList from "./PantryIngredientList";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -231,26 +232,10 @@ export default async function RecipeDetailPage({ params }: PageProps) {
                 {ingredients.length === 0 ? (
                   <div className="mt-3 text-white/60">No ingredients yet.</div>
                 ) : (
-                  <ul className="mt-4 list-disc pl-5 leading-relaxed text-white/85">
-                    {ingredients.map((ing, idx) => (
-                      <li key={`${ing}-${idx}`} className="flex gap-2">
-  <span className={
-    matchMap.get(ing) === "matched" ? "text-green-400" :
-    matchMap.get(ing) === "partial" ? "text-yellow-400" :
-    matchMap.get(ing) === "missing" ? "text-red-400" :
-    "text-white/40"
-  }>
-    {matchMap.get(ing) === "matched" ? "✓" :
-     matchMap.get(ing) === "partial" ? "?" :
-     matchMap.get(ing) === "missing" ? <span className="text-xs">✕</span> : "•"}
-  </span>
-
-  <span className="text-white/85">
-    {ing}
-  </span>
-</li>
-                    ))}
-                  </ul>
+                  <PantryIngredientList
+                    ingredients={ingredients}
+                    matchEntries={Array.from(matchMap.entries())}
+                  />
                 )}
               </div>
 
@@ -286,6 +271,8 @@ export default async function RecipeDetailPage({ params }: PageProps) {
     </div>
   );
 }
+
+
 
 
 
