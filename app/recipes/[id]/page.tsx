@@ -130,22 +130,26 @@ function buildMatchByIngredient(pantryMatch: any): Record<string, IngredientMatc
   for (const item of pantryMatch.partial ?? []) {
     if (!item?.ingredient) continue;
     matchByIngredient[item.ingredient] = {
-      state: "partial",
+      state: item.inShoppingList ? "planned" : "partial",
       pantryItem: item.pantryItem ?? item.matchedStorageRawName ?? null,
       quantityAvailable: item.quantityAvailable ?? null,
       matchKind: item.matchKind ?? null,
       isSoftMatch: true,
+      inShoppingList: Boolean(item.inShoppingList),
+      shoppingListItemName: item.shoppingListItemName ?? null,
     };
   }
 
   for (const item of pantryMatch.missing ?? []) {
     if (!item?.ingredient) continue;
     matchByIngredient[item.ingredient] = {
-      state: "missing",
+      state: item.inShoppingList ? "planned" : "missing",
       pantryItem: null,
       quantityAvailable: null,
       matchKind: null,
       isSoftMatch: false,
+      inShoppingList: Boolean(item.inShoppingList),
+      shoppingListItemName: item.shoppingListItemName ?? null,
     };
   }
 
@@ -297,3 +301,5 @@ export default async function RecipeDetailPage({ params }: PageProps) {
     </div>
   );
 }
+
+

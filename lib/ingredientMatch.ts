@@ -103,6 +103,7 @@ export function pickStorageLocation(it: StorageItem): string | undefined {
 export type MatchKind = "exact" | "containment" | "token";
 
 type StorageIndexRow = {
+  id: string;
   qty: number;
   unit?: string;
   location?: string;
@@ -122,6 +123,10 @@ export type IngredientMatchDetail = {
 
   // what pantry thing we matched against (for UI marker copy)
   matchedStorageRawName: string | null;
+  matchedStorageItemId: string | null;
+  matchedStorageQuantity: number | null;
+  matchedStorageUnit: string | null;
+  matchedStorageLocation: string | null;
 
   // convenience flags for UI
   isSoftMatch: boolean; // containment/token
@@ -147,6 +152,7 @@ export function buildStorageIndex(items: StorageItem[]) {
     const prev = map.get(key);
     if (!prev) {
       map.set(key, {
+        id: it.id,
         qty,
         unit,
         location,
@@ -266,9 +272,27 @@ function tokensMatchEnough(ingTokens: string[], storageTokens: string[]) {
 function matchIngredient(
   ingredient: string,
   storageIndex: Map<string, StorageIndexRow>
-): { matched: boolean; matchKind: MatchKind | null; matchedStorageRawName: string | null } {
+): {
+  matched: boolean;
+  matchKind: MatchKind | null;
+  matchedStorageRawName: string | null;
+  matchedStorageItemId: string | null;
+  matchedStorageQuantity: number | null;
+  matchedStorageUnit: string | null;
+  matchedStorageLocation: string | null;
+} {
   const k = norm(ingredient);
-  if (!k) return { matched: false, matchKind: null, matchedStorageRawName: null };
+  if (!k) {
+    return {
+      matched: false,
+      matchKind: null,
+      matchedStorageRawName: null,
+      matchedStorageItemId: null,
+      matchedStorageQuantity: null,
+      matchedStorageUnit: null,
+      matchedStorageLocation: null,
+    };
+  }
 
   const wantsEggs = ingredientWantsEggs(ingredient);
   const ingTokens = normalizeForMatch(ingredient).tokens;
@@ -276,7 +300,15 @@ function matchIngredient(
   // 1) Exact
   const exact = storageIndex.get(k);
   if (exact && !(wantsEggs && exact.isCandyEggs)) {
-    return { matched: true, matchKind: "exact", matchedStorageRawName: exact.rawName };
+    return {
+      matched: true,
+      matchKind: "exact",
+      matchedStorageRawName: exact.rawName,
+      matchedStorageItemId: exact.id,
+      matchedStorageQuantity: exact.qty ?? null,
+      matchedStorageUnit: exact.unit ?? null,
+      matchedStorageLocation: exact.location ?? null,
+    };
   }
 
   const entries = Array.from(storageIndex.entries());
@@ -291,6 +323,10 @@ function matchIngredient(
       matched: true,
       matchKind: "containment",
       matchedStorageRawName: foundContainment[1].rawName,
+      matchedStorageItemId: foundContainment[1].id,
+      matchedStorageQuantity: foundContainment[1].qty ?? null,
+      matchedStorageUnit: foundContainment[1].unit ?? null,
+      matchedStorageLocation: foundContainment[1].location ?? null,
     };
   }
 
@@ -303,7 +339,15 @@ function matchIngredient(
   //
   // We can re-enable this later with stricter food-family rules.
 
-  return { matched: false, matchKind: null, matchedStorageRawName: null };
+  return {
+    matched: false,
+    matchKind: null,
+    matchedStorageRawName: null,
+    matchedStorageItemId: null,
+    matchedStorageQuantity: null,
+    matchedStorageUnit: null,
+    matchedStorageLocation: null,
+  };
 }
 
 /**
@@ -330,6 +374,10 @@ export function summarizeIngredients(ingredients: string[], storageIndex: Map<st
         matched: true,
         matchKind: res.matchKind,
         matchedStorageRawName: res.matchedStorageRawName,
+        matchedStorageItemId: res.matchedStorageItemId,
+        matchedStorageQuantity: res.matchedStorageQuantity,
+        matchedStorageUnit: res.matchedStorageUnit,
+        matchedStorageLocation: res.matchedStorageLocation,
         isSoftMatch: isSoft,
       });
     } else {
@@ -339,6 +387,10 @@ export function summarizeIngredients(ingredients: string[], storageIndex: Map<st
         matched: false,
         matchKind: null,
         matchedStorageRawName: null,
+        matchedStorageItemId: null,
+        matchedStorageQuantity: null,
+        matchedStorageUnit: null,
+        matchedStorageLocation: null,
         isSoftMatch: false,
       });
     }
@@ -399,7 +451,17 @@ export function matchIngredientToStorage(ingredient: string, storageItems: Stora
       matched: false,
       matchKind: null,
       matchedStorageRawName: null,
+      matchedStorageItemId: null,
+      matchedStorageQuantity: null,
+      matchedStorageUnit: null,
+      matchedStorageLocation: null,
       isSoftMatch: false,
     }
   );
 }
+
+
+
+
+
+

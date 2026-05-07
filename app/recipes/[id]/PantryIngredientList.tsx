@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export type MatchState = "matched" | "partial" | "missing";
+export type MatchState = "matched" | "partial" | "missing" | "planned";
 
 export type IngredientMatchInfo = {
   state: MatchState;
@@ -10,6 +10,8 @@ export type IngredientMatchInfo = {
   quantityAvailable?: number | null;
   matchKind?: string | null;
   isSoftMatch?: boolean;
+  inShoppingList?: boolean;
+  shoppingListItemName?: string | null;
 };
 
 type Props = {
@@ -20,6 +22,7 @@ type Props = {
 function getMarker(state: MatchState | undefined, isAdded: boolean) {
   if (state === "matched") return "✓";
   if (state === "partial") return "?";
+  if (state === "planned") return "▤";
   if (state === "missing") return isAdded ? "✓" : "✕";
   return "•";
 }
@@ -27,11 +30,18 @@ function getMarker(state: MatchState | undefined, isAdded: boolean) {
 function getMarkerClass(state: MatchState | undefined, isAdded: boolean) {
   if (state === "matched") return "text-green-400";
   if (state === "partial") return "text-yellow-400";
+  if (state === "planned") return "text-cyan-300";
   if (state === "missing") return isAdded ? "text-green-400" : "text-red-400";
   return "text-white/40";
 }
 
 function getMatchLabel(match: IngredientMatchInfo | undefined) {
+  if (match?.state === "planned") {
+    return match.shoppingListItemName
+      ? `On shopping list: ${match.shoppingListItemName}`
+      : "On shopping list";
+  }
+
   if (!match || match.state !== "partial" || !match.pantryItem) return null;
 
   if (match.matchKind === "containment") {
@@ -97,3 +107,4 @@ export default function PantryIngredientList({ ingredients, matchByIngredient }:
     </ul>
   );
 }
+

@@ -6,6 +6,11 @@ import {
   toStringArray,
   type StorageItem,
 } from "@/lib/ingredientMatch";
+import {
+  canonicalKey,
+  isDifferentProductByMarkers,
+} from "@/lib/shopping/canonicalIngredients";
+import { normalizeShoppingListIdentifier } from "@/lib/shopping/normalize";
 
 type Params = { params: { id: string } };
 
@@ -16,6 +21,8 @@ type PantryMatchRow = {
   quantityAvailable?: number | null;
   matchKind?: string | null;
   isSoftMatch?: boolean;
+  inShoppingList?: boolean;
+  shoppingListItemName?: string | null;
 };
 
 function parseIngredients(value: unknown): string[] {
@@ -49,6 +56,34 @@ function makeQuantityLookup(items: StorageItem[]) {
   return map;
 }
 
+function findShoppingListMatch(
+  ingredient: string,
+  shoppingItems: { name?: string | null; checked?: boolean | null }[]
+): string | null {
+  const ingredientClean = normalizeShoppingListIdentifier(ingredient).displayName || ingredient;
+  const ingredientCanon = canonicalKey(ingredientClean);
+  if (!ingredientCanon) return null;
+
+  for (const item of shoppingItems) {
+    const name = String(item.name ?? "").trim();
+    if (!name) continue;
+    if (item.checked) continue;
+
+    const nameClean = normalizeShoppingListIdentifier(name).displayName || name;
+
+    if (isDifferentProductByMarkers(ingredientClean, nameClean)) continue;
+
+    const itemCanon = canonicalKey(nameClean);
+    if (!itemCanon) continue;
+
+    if (itemCanon === ingredientCanon) {
+      return name;
+    }
+  }
+
+  return null;
+}
+
 export async function GET(_req: Request, { params }: Params) {
   const { id } = params;
 
@@ -72,6 +107,15 @@ export async function GET(_req: Request, { params }: Params) {
 
     if (pantryError) throw pantryError;
 
+    const { data: shoppingRows, error: shoppingError } = await supabase
+      .from("shopping_list_items")
+      .select("name, checked")
+      .eq("dismissed", false);
+
+    if (shoppingError) throw shoppingError;
+
+    const shoppingItems = shoppingRows ?? [];
+
     const storageItems: StorageItem[] = pantry ?? [];
     const storageIndex = buildStorageIndex(storageItems);
     const quantityByName = makeQuantityLookup(storageItems);
@@ -82,6 +126,9 @@ export async function GET(_req: Request, { params }: Params) {
     const missing: PantryMatchRow[] = [];
 
     for (const detail of summary.details) {
+      const shoppingListItemName = findShoppingListMatch(detail.ingredient, shoppingItems);
+      const inShoppingList = Boolean(shoppingListItemName);
+
       if (!detail.matched) {
         missing.push({
           ingredient: detail.ingredient,
@@ -90,6 +137,8 @@ export async function GET(_req: Request, { params }: Params) {
           quantityAvailable: null,
           matchKind: null,
           isSoftMatch: false,
+          inShoppingList,
+          shoppingListItemName,
         });
         continue;
       }
@@ -106,6 +155,8 @@ export async function GET(_req: Request, { params }: Params) {
         quantityAvailable,
         matchKind: detail.matchKind,
         isSoftMatch: detail.isSoftMatch,
+        inShoppingList,
+        shoppingListItemName,
       };
 
       if (detail.isSoftMatch) {
@@ -138,3 +189,5 @@ export async function GET(_req: Request, { params }: Params) {
     );
   }
 }
+
+
