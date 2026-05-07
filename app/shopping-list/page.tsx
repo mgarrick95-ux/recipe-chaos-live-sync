@@ -586,6 +586,8 @@ type PantryAddNotice = {
   requestedName: string;
   storageName: string;
   storageLocation: string;
+  storageQuantity?: number | null;
+  storageUnit?: string | null;
 };
 
 export default function ShoppingListPage() {
@@ -1594,6 +1596,8 @@ export default function ShoppingListPage() {
         requestedName: name,
         storageName: storageMatch.name,
         storageLocation: storageMatch.location || "Storage",
+        storageQuantity: typeof storageMatch.quantity === "number" ? storageMatch.quantity : null,
+        storageUnit: storageMatch.unit || null,
       });
       setNewItemName("");
       return;
@@ -1733,6 +1737,13 @@ export default function ShoppingListPage() {
               <span className="text-white/85 font-semibold">
                 {pantryAddNotice.storageLocation}
               </span>
+              {typeof pantryAddNotice.storageQuantity === "number" ? (
+                <>
+                  {" "}
+                  — {pantryAddNotice.storageQuantity}
+                  {pantryAddNotice.storageUnit ? ` ${pantryAddNotice.storageUnit}` : ""}
+                </>
+              ) : null}
               . Add{" "}
               <span className="text-white/85 font-semibold">
                 {toTitleCaseSmart(displayBaseName(pantryAddNotice.requestedName))}
@@ -2770,6 +2781,9 @@ export default function ShoppingListPage() {
     </RcPageShell>
   );
 }
+
+
+
 
 
 
