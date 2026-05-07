@@ -602,7 +602,7 @@ export default function MealPlanningClient() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [weekStartStr]);
 
   async function loadStorage() {
     try {
@@ -624,14 +624,14 @@ export default function MealPlanningClient() {
 
   useEffect(() => {
     loadStorage();
-  }, []);
+  }, [weekStartStr]);
 
   async function loadPlan() {
     setPlanBusy(true);
     setStatus("");
 
     try {
-      const res = await fetch("/api/meal-plans", { cache: "no-store" });
+      const res = await fetch(`/api/meal-plans?start=${weekStartStr}`, { cache: "no-store" });
       const json: PlanResponse = await res.json().catch(() => ({ ok: false } as any));
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Failed to load meal plan");
 
@@ -674,7 +674,7 @@ export default function MealPlanningClient() {
   useEffect(() => {
     loadPlan();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [weekStartStr]);
 
   async function savePlan(nextSlots: SlotPlan[]) {
     setSaving(true);
@@ -694,7 +694,7 @@ export default function MealPlanningClient() {
         })),
       };
 
-      const res = await fetch("/api/meal-plans", {
+      const res = await fetch(`/api/meal-plans?start=${weekStartStr}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -769,7 +769,12 @@ export default function MealPlanningClient() {
       const p = heuristic;
       if (!p) continue;
 
-      if (p.course === "main" || p.course === "breakfast") ids.push(r.id);
+      const title = normalizeName(r.title || "");
+const looksDessert = KW.dessert.some((k) => title.includes(k));
+
+if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
+  ids.push(r.id);
+}
     }
     return ids;
   }, [recipes, profilesById]);
@@ -816,6 +821,38 @@ export default function MealPlanningClient() {
 
     return ids;
   }, [recipes, profilesById]);
+
+
+  function scoreMainCandidate(recipeId: string) {
+    const r = recipesById.get(recipeId);
+    const p = profilesById.get(recipeId);
+    if (!r || !p) return -999;
+
+    const userCourse = (r as any)?.user_profile?.course;
+    const aiCourse = (r as any)?.ai_profile?.course;
+    const eff = effectiveCourseForPick(r, p.course);
+
+    let score = 0;
+
+    if (userCourse === "main") score += 100;
+    if (userCourse === "breakfast") score += 35;
+
+    if (userCourse !== "main" && aiCourse === "main") score += 70;
+    if (userCourse !== "breakfast" && aiCourse === "breakfast") score += 20;
+
+    if (p.course === "main") score += 40;
+    if (p.course === "breakfast") score += 10;
+
+    score += Math.round((p.confidence || 0) * 10);
+
+    if (eff === "breakfast") score -= 15;
+
+    return score;
+  }
+
+  function sortMainCandidates(ids: string[]) {
+    return [...ids].sort((a, b) => scoreMainCandidate(b) - scoreMainCandidate(a));
+  }
 
   function pickSideForMain(mainId: string, usedSideIds: Set<string>) {
     if (!isValidMainForSides(mainId)) return null;
@@ -909,7 +946,7 @@ export default function MealPlanningClient() {
   async function doItForMe() {
     if (recipes.length === 0) return;
 
-    const candidates = shuffle(mainCandidates);
+    const candidates = sortMainCandidates(mainCandidates);
     const usedMain = new Set<string>(slots.map((s) => s.mainId).filter(Boolean) as string[]);
 
     const next = slots.map((s) => {
@@ -937,7 +974,7 @@ export default function MealPlanningClient() {
   async function regenerateUnlocked() {
     if (recipes.length === 0) return;
 
-    const candidates = shuffle(mainCandidates);
+    const candidates = sortMainCandidates(mainCandidates);
     const lockedMain = new Set<string>(
       slots.filter((s) => s.locked && s.mainId).map((s) => s.mainId!) as string[]
     );
@@ -1067,7 +1104,7 @@ export default function MealPlanningClient() {
         await fetch("/api/shopping-list/items", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, quantity: qty }),
+          body: JSON.stringify({ name, quantity: qty, isDerived: true }),
         });
       }
 
@@ -1499,6 +1536,19 @@ export default function MealPlanningClient() {
     </RcPageShell>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

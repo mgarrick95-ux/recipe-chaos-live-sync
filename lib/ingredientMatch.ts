@@ -194,6 +194,50 @@ function ingredientWantsEggs(ingredient: string) {
   return t.includes("egg") || t.includes("eggs");
 }
 
+function tokenSet(tokens: string[]) {
+  return new Set(tokens.map((t) => t.toLowerCase()).filter(Boolean));
+}
+
+function hasWholeTokenOverlap(aTokens: string[], bTokens: string[]) {
+  const a = tokenSet(aTokens);
+  const b = tokenSet(bTokens);
+
+  for (const token of a) {
+    if (b.has(token)) return true;
+  }
+
+  return false;
+}
+
+function safeContainmentMatch(
+  ingredientKey: string,
+  storageKey: string,
+  ingredientTokens: string[],
+  storageTokens: string[]
+) {
+  if (ingredientKey === storageKey) return true;
+
+  // Only compare real word tokens.
+  // This prevents nonsense matches like:
+  // "1 1/2 cups flour" -> "BEATRICE 2% milk"
+  // "buttermilk" -> "butter"
+  const cleanIngredientTokens = new Set(
+    ingredientTokens
+      .map((t) => t.toLowerCase())
+      .filter((t) => /^[a-z]{3,}$/.test(t))
+  );
+
+  const cleanStorageTokens = storageTokens
+    .map((t) => t.toLowerCase())
+    .filter((t) => /^[a-z]{3,}$/.test(t));
+
+  for (const token of cleanStorageTokens) {
+    if (cleanIngredientTokens.has(token)) return true;
+  }
+
+  return false;
+}
+
 function meaningfulTokens(tokens: string[]) {
   return tokens.filter((t) => t.length >= 3 && !GENERIC_TOKENS.has(t));
 }
@@ -240,7 +284,7 @@ function matchIngredient(
   // 2) Containment
   const foundContainment = entries.find(([sk, row]) => {
     if (wantsEggs && row.isCandyEggs) return false;
-    return sk === k || sk.includes(k) || k.includes(sk);
+    return safeContainmentMatch(k, sk, ingTokens, row.tokens);
   });
   if (foundContainment) {
     return {
@@ -250,18 +294,14 @@ function matchIngredient(
     };
   }
 
-  // 3) Token overlap
-  const foundToken = entries.find(([, row]) => {
-    if (wantsEggs && row.isCandyEggs) return false;
-    return tokensMatchEnough(ingTokens, row.tokens);
-  });
-  if (foundToken) {
-    return {
-      matched: true,
-      matchKind: "token",
-      matchedStorageRawName: foundToken[1].rawName,
-    };
-  }
+  // 3) Token overlap fallback is intentionally disabled for now.
+  // It caused noisy false positives like:
+  // flour -> milk
+  // baking powder -> milk
+  // nutmeg -> milk
+  // milk or buttermilk -> butter
+  //
+  // We can re-enable this later with stricter food-family rules.
 
   return { matched: false, matchKind: null, matchedStorageRawName: null };
 }
@@ -344,3 +384,22 @@ export function parseRecipes(json: any): any[] {
   return [];
 }
 
+
+
+
+
+
+export function matchIngredientToStorage(ingredient: string, storageItems: StorageItem[]) {
+  const storageIndex = buildStorageIndex(storageItems);
+  const summary = summarizeIngredients([ingredient], storageIndex);
+
+  return (
+    summary.details[0] ?? {
+      ingredient,
+      matched: false,
+      matchKind: null,
+      matchedStorageRawName: null,
+      isSoftMatch: false,
+    }
+  );
+}

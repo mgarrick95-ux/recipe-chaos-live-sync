@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import DeleteRecipeButton from "./DeleteRecipeButton";
-import PantryIngredientList from "./PantryIngredientList";
+import PantryIngredientList, { type IngredientMatchInfo } from "./PantryIngredientList";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -111,6 +111,47 @@ function parseInstructions(value: unknown): string[] {
   return toStringArrayBasic(value);
 }
 
+function buildMatchByIngredient(pantryMatch: any): Record<string, IngredientMatchInfo> {
+  const matchByIngredient: Record<string, IngredientMatchInfo> = {};
+
+  if (!pantryMatch?.ok) return matchByIngredient;
+
+  for (const item of pantryMatch.matched ?? []) {
+    if (!item?.ingredient) continue;
+    matchByIngredient[item.ingredient] = {
+      state: "matched",
+      pantryItem: item.pantryItem ?? item.matchedStorageRawName ?? null,
+      quantityAvailable: item.quantityAvailable ?? null,
+      matchKind: item.matchKind ?? null,
+      isSoftMatch: false,
+    };
+  }
+
+  for (const item of pantryMatch.partial ?? []) {
+    if (!item?.ingredient) continue;
+    matchByIngredient[item.ingredient] = {
+      state: "partial",
+      pantryItem: item.pantryItem ?? item.matchedStorageRawName ?? null,
+      quantityAvailable: item.quantityAvailable ?? null,
+      matchKind: item.matchKind ?? null,
+      isSoftMatch: true,
+    };
+  }
+
+  for (const item of pantryMatch.missing ?? []) {
+    if (!item?.ingredient) continue;
+    matchByIngredient[item.ingredient] = {
+      state: "missing",
+      pantryItem: null,
+      quantityAvailable: null,
+      matchKind: null,
+      isSoftMatch: false,
+    };
+  }
+
+  return matchByIngredient;
+}
+
 const pill =
   "inline-flex items-center justify-center rounded-full bg-white/10 hover:bg-white/15 px-6 py-3 font-semibold ring-1 ring-white/10 transition";
 const pillPrimary =
@@ -159,17 +200,11 @@ export default async function RecipeDetailPage({ params }: PageProps) {
     pantryMatch = null;
   }
 
-  const matchMap = new Map<string, "matched" | "partial" | "missing">();
+  const matchByIngredient = buildMatchByIngredient(pantryMatch);
 
-  if (pantryMatch?.ok) {
-    pantryMatch.matched.forEach((i: any) => matchMap.set(i.ingredient, "matched"));
-    pantryMatch.partial.forEach((i: any) => matchMap.set(i.ingredient, "partial"));
-    pantryMatch.missing.forEach((i: any) => matchMap.set(i.ingredient, "missing"));
-  }
   return (
     <div className="min-h-screen bg-[#050816] text-white">
       <div className="max-w-6xl mx-auto px-4 py-10">
-        {/* Top bar */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <Link href="/recipes" className={pill}>
             ← Back to Recipes
@@ -182,14 +217,10 @@ export default async function RecipeDetailPage({ params }: PageProps) {
             <Link href={`/recipes/${recipe.id}/edit`} className={pillPrimary}>
               Edit
             </Link>
-
-            {/* Duplicate removed (not needed / not working) */}
-
             <DeleteRecipeButton recipeId={recipe.id} recipeTitle={recipe.title} />
           </div>
         </div>
 
-        {/* Main card */}
         <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
           <div className="flex items-start justify-between gap-6 flex-wrap">
             <div className="min-w-0">
@@ -224,7 +255,6 @@ export default async function RecipeDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Ingredients + Instructions */}
           <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
             <div className="grid gap-8 md:grid-cols-2">
               <div>
@@ -232,10 +262,7 @@ export default async function RecipeDetailPage({ params }: PageProps) {
                 {ingredients.length === 0 ? (
                   <div className="mt-3 text-white/60">No ingredients yet.</div>
                 ) : (
-                  <PantryIngredientList
-                    ingredients={ingredients}
-                    matchEntries={Array.from(matchMap.entries())}
-                  />
+                  <PantryIngredientList ingredients={ingredients} matchByIngredient={matchByIngredient} />
                 )}
               </div>
 
@@ -256,7 +283,6 @@ export default async function RecipeDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Imported page text (optional) */}
           {recipe.source_text ? (
             <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
               <h3 className="text-xl font-extrabold tracking-tight">Imported page text</h3>
@@ -271,20 +297,3 @@ export default async function RecipeDetailPage({ params }: PageProps) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

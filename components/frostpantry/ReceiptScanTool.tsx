@@ -60,6 +60,34 @@ type ReceiptRow = {
 
 function normalizePurchaseItemName(raw: string) {
   let s = cleanName(raw || "");
+  // --- Receipt shorthand cleanup (safe, non-destructive) ---
+  s = s.replace(/\bNN\b/gi, ""); // store brand noise
+
+  const receiptMap: Record<string, string> = {
+    RASP: "raspberry",
+    STRAW: "strawberry",
+    BLUB: "blueberry",
+    BLU: "blueberry",
+    MARB: "marble",
+    CHED: "cheddar",
+    MOZZ: "mozzarella",
+    PARM: "parmesan",
+    BLANC: "white",
+    WHL: "whole",
+    SKIM: "skim",
+    MILK: "milk",
+    YOG: "yogurt",
+    YOGURT: "yogurt",
+    EGGS: "eggs",
+  };
+
+  s = s
+    .split(" ")
+    .map((word) => {
+      const key = word.toUpperCase();
+      return receiptMap[key] || word;
+    })
+    .join(" ");
   if (!s) return s;
 
   const trimTail = (v: string) => v.replace(/[,\-"":\s]+$/g, "").trim();
@@ -86,7 +114,7 @@ function normalizePurchaseItemName(raw: string) {
 
   // Strip "6 x 710 mL" tail style
   s = s.replace(
-    /\s*,?\s*\d+(\.\d+)?\s*[xÃ—]\s*\d*(\.\d+)?\s*(kg|g|lb|lbs|oz|ml|l|liters?|litres?)\b\.?\s*$/i,
+    /\s*,?\s*\d+(\.\d+)?\s*[x×]\s*\d*(\.\d+)?\s*(kg|g|lb|lbs|oz|ml|l|liters?|litres?)\b\.?\s*$/i,
     ""
   );
   s = trimTail(s);
@@ -96,7 +124,7 @@ function normalizePurchaseItemName(raw: string) {
   s = trimTail(s);
 
   // Strip trailing "6 x"
-  s = s.replace(/\s*,?\s*\d+\s*[xÃ—]\s*$/i, "");
+  s = s.replace(/\s*,?\s*\d+\s*[x×]\s*$/i, "");
   s = trimTail(s);
 
   // Strip origin/prep tails
@@ -121,7 +149,7 @@ function normalizePurchaseItemName(raw: string) {
       if (/^\d+(\.\d+)?\s*(ml|l|g|kg|oz|lb|lbs)\b\.?$/i.test(t)) return true;
       if (/^\d+(\.\d+)?(ml|l|g|kg|oz|lb|lbs)\b\.?$/i.test(t)) return true;
       if (/^\d+\s*(pack|pk|ct|count)\b\.?$/i.test(t)) return true;
-      if (/^\d+\s*[xÃ—]\s*$/i.test(t)) return true;
+      if (/^\d+\s*[x×]\s*$/i.test(t)) return true;
       return false;
     };
 
@@ -587,7 +615,7 @@ export default function ReceiptScanTool({
 
         const row: ReceiptRow = {
           id: uid("row"),
-          checked: true,
+          checked: match.matchedStorage.length === 0,
           name,
           quantity: qty,
           unit: null,
@@ -690,7 +718,7 @@ export default function ReceiptScanTool({
 
           const row: ReceiptRow = {
             id: uid("row"),
-            checked: true,
+            checked: match.matchedStorage.length === 0,
 
             name,
             quantity,
@@ -949,9 +977,30 @@ export default function ReceiptScanTool({
                           onChange={(e) => setRow(r.id, { name: e.target.value })}
                           className="w-[520px] max-w-[80vw] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-fuchsia-400/50"
                         />
-                        {r.matchLabel ? (
-                          <div className="mt-1 text-xs text-white/45">
-                            Match: <span className="text-white/65">{r.matchLabel}</span>
+                                                                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                          {r.dupGroupKey ? (
+                            <span className="rounded-full bg-fuchsia-500/20 px-2 py-1 text-fuchsia-200">
+                              Duplicate in receipt
+                            </span>
+                          ) : null}
+
+                          {r.matchLabel ? (
+                            <span className="rounded-full bg-blue-500/20 px-2 py-1 text-blue-200">
+                              Already in {r.matchLabel}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {r.matchedStorage.length > 0 ? (
+                          <div className="mt-2 rounded-2xl bg-blue-500/10 px-3 py-2 text-xs text-blue-100 ring-1 ring-blue-400/20">
+                            Existing:{" "}
+                            <span className="font-semibold">
+                              {r.matchedStorage[0]?.name || "Stored item"}
+                            </span>
+                            {r.matchedStorage[0]?.location ? ` in ${r.matchedStorage[0].location}` : ""}
+                            {typeof r.matchedStorage[0]?.quantity === "number"
+                              ? ` (${r.matchedStorage[0].quantity}${r.matchedStorage[0]?.unit ? ` ${r.matchedStorage[0].unit}` : ""})`
+                              : ""}
                           </div>
                         ) : null}
                       </div>
@@ -995,6 +1044,11 @@ export default function ReceiptScanTool({
     </div>
   );
 }
+
+
+
+
+
 
 
 

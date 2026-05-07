@@ -1,8 +1,53 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { normalizeShoppingListIdentifier } from "@/lib/shopping/normalize";
+import {
+  buildStorageIndex,
+  summarizeIngredients,
+  toStringArray,
+  type StorageItem,
+} from "@/lib/ingredientMatch";
 
 type Params = { params: { id: string } };
+
+type PantryMatchRow = {
+  ingredient: string;
+  pantryItem?: string | null;
+  matchedStorageRawName?: string | null;
+  quantityAvailable?: number | null;
+  matchKind?: string | null;
+  isSoftMatch?: boolean;
+};
+
+function parseIngredients(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return toStringArray(value);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n|,/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  return toStringArray(value);
+}
+
+function makeQuantityLookup(items: StorageItem[]) {
+  const map = new Map<string, number>();
+
+  for (const item of items) {
+    const name = String(item.name ?? item.item_name ?? item.title ?? "").trim();
+    if (!name) continue;
+
+    const qty = Number(item.quantity ?? item.qty ?? item.count ?? 0);
+    const safeQty = Number.isFinite(qty) ? qty : 0;
+
+    map.set(name.toLowerCase(), (map.get(name.toLowerCase()) ?? 0) + safeQty);
+  }
+
+  return map;
+}
 
 export async function GET(_req: Request, { params }: Params) {
   const { id } = params;
@@ -18,66 +63,55 @@ export async function GET(_req: Request, { params }: Params) {
 
     if (recipeError) throw recipeError;
 
-    const ingredients: string[] = Array.isArray(recipe.ingredients)
-      ? recipe.ingredients
-      : String(recipe.ingredients || "")
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean);
+    const ingredients = parseIngredients(recipe?.ingredients);
 
     const { data: pantry, error: pantryError } = await supabase
       .from("storage_items")
-      .select("id, name, quantity")
+      .select("id, name, quantity, unit, location")
       .gt("quantity", 0);
 
     if (pantryError) throw pantryError;
 
-    const normalizedPantry = (pantry ?? []).map((p) => ({
-      ...p,
-      norm: normalizeShoppingListIdentifier(p.name).normalizedName,
-    }));
+    const storageItems: StorageItem[] = pantry ?? [];
+    const storageIndex = buildStorageIndex(storageItems);
+    const quantityByName = makeQuantityLookup(storageItems);
+    const summary = summarizeIngredients(ingredients, storageIndex);
 
-    const matched: any[] = [];
-    const partial: any[] = [];
-    const missing: any[] = [];
+    const matched: PantryMatchRow[] = [];
+    const partial: PantryMatchRow[] = [];
+    const missing: PantryMatchRow[] = [];
 
-    for (const raw of ingredients) {
-      const simplified = raw
-        .toLowerCase()
-        .replace(/[0-9\/\.\-]+/g, "")
-        .replace(/\b(cup|cups|teaspoon|teaspoons|tablespoon|tablespoons|tbsp|tsp|oz|ounce|ounces|pound|pounds|lb|lbs|gram|grams|g)\b/g, "")
-        .replace(/\b(of|and|or|to|for|with|at|room|temperature)\b/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const ident = normalizeShoppingListIdentifier(simplified || raw);
-      if (!ident.normalizedName) continue;
-
-      const match = normalizedPantry.find((p) =>
-        p.norm.includes(ident.normalizedName)
-      );
-
-      if (!match) {
-        missing.push({ ingredient: raw });
+    for (const detail of summary.details) {
+      if (!detail.matched) {
+        missing.push({
+          ingredient: detail.ingredient,
+          pantryItem: null,
+          matchedStorageRawName: null,
+          quantityAvailable: null,
+          matchKind: null,
+          isSoftMatch: false,
+        });
         continue;
       }
 
-      const isExact =
-        match.norm === ident.normalizedName ||
-        ident.normalizedName.includes(match.norm);
+      const pantryItem = detail.matchedStorageRawName;
+      const quantityAvailable = pantryItem
+        ? quantityByName.get(pantryItem.toLowerCase()) ?? null
+        : null;
 
-      if (isExact && (match.quantity ?? 0) > 0) {
-        matched.push({
-          ingredient: raw,
-          pantryItem: match.name,
-          quantityAvailable: match.quantity,
-        });
+      const row: PantryMatchRow = {
+        ingredient: detail.ingredient,
+        pantryItem,
+        matchedStorageRawName: pantryItem,
+        quantityAvailable,
+        matchKind: detail.matchKind,
+        isSoftMatch: detail.isSoftMatch,
+      };
+
+      if (detail.isSoftMatch) {
+        partial.push(row);
       } else {
-        partial.push({
-          ingredient: raw,
-          pantryItem: match.name,
-          quantityAvailable: match.quantity,
-        });
+        matched.push(row);
       }
     }
 
@@ -86,6 +120,13 @@ export async function GET(_req: Request, { params }: Params) {
       matched,
       partial,
       missing,
+      summary: {
+        total: summary.total,
+        haveCount: summary.haveCount,
+        softHaveCount: summary.softHaveCount,
+        missingCount: summary.missing.length,
+        allInStock: summary.allInStock,
+      },
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -97,5 +138,3 @@ export async function GET(_req: Request, { params }: Params) {
     );
   }
 }
-
-

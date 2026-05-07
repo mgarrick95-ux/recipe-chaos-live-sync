@@ -96,10 +96,16 @@ function coerceSlots(value: any, fallbackCount = 7): PlanSlot[] {
   }));
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const now = new Date();
-    const start = startOfWeekMonday(now);
+    const url = new URL(req.url);
+    const startParam = url.searchParams.get("start");
+
+    const start =
+      startParam && !Number.isNaN(new Date(startParam).getTime())
+        ? startOfWeekMonday(new Date(startParam))
+        : startOfWeekMonday(new Date());
+
     const end = addDays(start, 6);
 
     const start_date = toISODate(start);
@@ -159,8 +165,14 @@ export async function POST(req: Request) {
 
     const slots = coerceSlots(body?.selected_recipe_ids, meal_count);
 
-    const now = new Date();
-    const start = startOfWeekMonday(now);
+    const url = new URL(req.url);
+    const startParam = url.searchParams.get("start");
+
+    const start =
+      startParam && !Number.isNaN(new Date(startParam).getTime())
+        ? startOfWeekMonday(new Date(startParam))
+        : startOfWeekMonday(new Date());
+
     const end = addDays(start, 6);
 
     const start_date = toISODate(start);

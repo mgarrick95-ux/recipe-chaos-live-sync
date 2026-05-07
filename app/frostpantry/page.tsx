@@ -1439,18 +1439,20 @@ export default function FrostPantryPage() {
                         <div className="text-2xl font-extrabold tracking-tight">{item.name}</div>
 
                         {isDuplicateRow ? (
-                          <>
-                            {mergeReady ? <Chip text="Merge ready" tone="duplicate" /> : <Chip text="Review" tone="duplicate" />}
-                            <button
-                              type="button"
-                              onClick={() => itemGroupKey && openDuplicateModalForKey(itemGroupKey)}
-                              className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-extrabold ring-1 ring-white/10"
-                              title="Review this duplicate group"
-                            >
-                              Review
-                            </button>
-                          </>
-                        ) : null}
+  <button
+    type="button"
+    onClick={() => itemGroupKey && openDuplicateModalForKey(itemGroupKey)}
+    className="rounded-full border px-3 py-1.5 text-sm font-semibold transition hover:brightness-110"
+    style={{
+      background: "rgba(34,211,238,0.12)",
+      borderColor: "rgba(34,211,238,0.40)",
+      color: "rgba(255,255,255,0.95)",
+    }}
+    title="Review this duplicate group"
+  >
+    Possible duplicate
+  </button>
+) : null}
 
                         {isOut(item) ? <Chip text="Out" tone="out" /> : null}
                         {expired ? <Chip text="Expired" tone="expired" /> : null}
@@ -1689,6 +1691,7 @@ function FilterPill({
     </button>
   );
 }
+
 
 
 
