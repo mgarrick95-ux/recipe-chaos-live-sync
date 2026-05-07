@@ -581,6 +581,13 @@ type RenamePrompt = {
   initial: string;
 };
 
+type PantryAddNotice = {
+  open: boolean;
+  requestedName: string;
+  storageName: string;
+  storageLocation: string;
+};
+
 export default function ShoppingListPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [storageItems, setStorageItems] = useState<StorageItem[]>([]);
@@ -609,6 +616,10 @@ export default function ShoppingListPage() {
 
   // Simple Yes/No duplicate prompt for manual add
   const [addDupPrompt, setAddDupPrompt] = useState<AddDuplicatePrompt | null>(
+    null
+  );
+
+  const [pantryAddNotice, setPantryAddNotice] = useState<PantryAddNotice | null>(
     null
   );
 
@@ -681,6 +692,7 @@ export default function ShoppingListPage() {
         setDupReviewOpen(false);
         setPfReviewOpen(false);
         setAddDupPrompt(null);
+        setPantryAddNotice(null);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -1421,6 +1433,24 @@ export default function ShoppingListPage() {
     | { kind: "same"; existing: Item }
     | { kind: "variant"; existing: Item };
 
+  function findStorageMatchForManualAdd(name: string): StorageItem | null {
+    const inputBase = displayBaseName(name);
+
+    for (const sig of storageSignatures) {
+      const firstStorageName = sig.items[0]?.name || "";
+      if (firstStorageName && isDifferentProductByMarkers(inputBase, displayBaseName(firstStorageName))) {
+        continue;
+      }
+
+      const result = matchIngredientToStorage(inputBase, sig.items);
+      if (result?.matched && sig.items.length > 0) {
+        return sig.items[0];
+      }
+    }
+
+    return null;
+  }
+
   function findExistingMatchForManualAdd(name: string): ManualMatch {
     const inputBase = displayBaseName(name);
     const inputCanon = canonicalKey(inputBase);
@@ -1557,6 +1587,18 @@ export default function ShoppingListPage() {
       return;
     }
 
+    const storageMatch = findStorageMatchForManualAdd(name);
+    if (storageMatch?.name) {
+      setPantryAddNotice({
+        open: true,
+        requestedName: name,
+        storageName: storageMatch.name,
+        storageLocation: storageMatch.location || "Storage",
+      });
+      setNewItemName("");
+      return;
+    }
+
     await addManualProceed(name);
   }
 
@@ -1669,6 +1711,62 @@ export default function ShoppingListPage() {
     <RcPageShell header={header}>
       <div ref={pageRootRef} />
 
+      {/* Pantry already-have notice */}
+      {pantryAddNotice?.open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPantryAddNotice(null);
+          }}
+        >
+          <div className="w-full max-w-xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 p-6">
+            <div className="text-xl font-extrabold tracking-tight">
+              You may already have this
+            </div>
+
+            <div className="mt-2 text-white/70">
+              <span className="text-white/85 font-semibold">
+                {toTitleCaseSmart(displayBaseName(pantryAddNotice.storageName))}
+              </span>{" "}
+              is already in{" "}
+              <span className="text-white/85 font-semibold">
+                {pantryAddNotice.storageLocation}
+              </span>
+              . Add{" "}
+              <span className="text-white/85 font-semibold">
+                {toTitleCaseSmart(displayBaseName(pantryAddNotice.requestedName))}
+              </span>{" "}
+              anyway?
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2 flex-wrap">
+              <button
+                type="button"
+                className={btn}
+                onClick={() => setPantryAddNotice(null)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className={btnPrimary}
+                onClick={async () => {
+                  const notice = pantryAddNotice;
+                  if (!notice) return;
+
+                  setPantryAddNotice(null);
+                  await addManualProceed(notice.requestedName);
+                }}
+              >
+                Add anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Simple Yes/No duplicate prompt */}
       {addDupPrompt?.open ? (
         <div
@@ -1708,6 +1806,7 @@ export default function ShoppingListPage() {
                   if (!prompt) return;
 
                   setAddDupPrompt(null);
+        setPantryAddNotice(null);
 
                   const id = prompt.existingId;
                   const latest = items.find((x) => x.id === id);
@@ -1732,6 +1831,7 @@ export default function ShoppingListPage() {
                   if (!prompt) return;
 
                   setAddDupPrompt(null);
+        setPantryAddNotice(null);
                   await addManualProceed(prompt.requestedName, true);
                 }}
               >
@@ -2670,6 +2770,14 @@ export default function ShoppingListPage() {
     </RcPageShell>
   );
 }
+
+
+
+
+
+
+
+
 
 
 
