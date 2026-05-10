@@ -143,6 +143,8 @@ export function buildStorageIndex(items: StorageItem[]) {
     if (!key) continue;
 
     const qty = pickStorageQty(it);
+    if (qty <= 0) continue;
+
     const unit = pickStorageUnit(it);
     const location = pickStorageLocation(it);
 
@@ -459,6 +461,8 @@ export function matchIngredientToStorage(ingredient: string, storageItems: Stora
     }
   );
 }
+
+
 
 
 

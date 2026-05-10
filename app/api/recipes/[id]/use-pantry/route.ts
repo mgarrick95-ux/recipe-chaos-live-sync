@@ -1,132 +1,192 @@
-// app/api/recipes/[id]/use-pantry/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 type Params = { params: { id: string } };
 
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+type UsePantryBody = {
+  storageItemId?: string;
+  ingredient?: string;
+  quantityUsed?: number | null;
+};
+
+function normalizeNewlines(s: string): string {
+  return s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
-export async function POST(_req: Request, { params }: Params) {
-  const { id } = params;
+function toIngredientLines(value: unknown): string[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === "string" ? v : String(v)))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return normalizeNewlines(value)
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  return [String(value)].map((s) => s.trim()).filter(Boolean);
+}
+
+function parseQuantityUsed(value: unknown): number {
+  if (value == null || value === "") return 1;
+
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error("quantityUsed must be a positive number");
+  }
+
+  return n;
+}
+
+export async function POST(req: Request, { params }: Params) {
+  const { id: recipeId } = params;
 
   try {
+    const body = (await req.json()) as UsePantryBody;
+
+    const storageItemId = String(body.storageItemId ?? "").trim();
+    const ingredient = String(body.ingredient ?? "").trim();
+    const quantityUsed = parseQuantityUsed(body.quantityUsed);
+
+    if (!storageItemId) {
+      return NextResponse.json(
+        { ok: false, error: "storageItemId is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!ingredient) {
+      return NextResponse.json(
+        { ok: false, error: "ingredient is required" },
+        { status: 400 }
+      );
+    }
+
     const supabase = supabaseServer;
 
-    // 1) Load the recipe (we only need ingredients)
     const { data: recipe, error: recipeError } = await supabase
       .from("recipes")
       .select("id, title, ingredients")
-      .eq("id", id)
+      .eq("id", recipeId)
       .single();
 
     if (recipeError) throw recipeError;
-    if (!recipe) throw new Error("Recipe not found");
 
-    const rawIngredients = (recipe.ingredients ?? "") as string;
-
-    const ingredientLines = rawIngredients
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    if (ingredientLines.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        updates: [],
-        summary: "No ingredients saved on this recipe yet.",
-      });
+    if (!recipe) {
+      return NextResponse.json(
+        { ok: false, error: "Recipe not found" },
+        { status: 404 }
+      );
     }
 
-    // 2) Load current FrostPantry items
-    const { data: storageItems, error: storageError } = await supabase
+    const recipeIngredients = toIngredientLines(recipe.ingredients);
+    const recipeHasIngredient = recipeIngredients.includes(ingredient);
+
+    if (!recipeHasIngredient) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "That ingredient does not belong to this recipe.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: storageItem, error: storageError } = await supabase
       .from("storage_items")
       .select("id, name, quantity, unit, location")
-      .gt("quantity", 0);
+      .eq("id", storageItemId)
+      .single();
 
     if (storageError) throw storageError;
 
-    if (!storageItems || storageItems.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        updates: [],
-        summary: "FrostPantry is empty – nothing to update.",
-      });
+    if (!storageItem) {
+      return NextResponse.json(
+        { ok: false, error: "Storage item not found" },
+        { status: 404 }
+      );
     }
 
-    const normalizedPantry = storageItems.map((item) => ({
-      ...item,
-      normName: normalize(item.name ?? ""),
-    }));
+    const currentQuantity = Number(storageItem.quantity ?? 0);
 
-    type Update = {
-      id: string;
-      name: string;
-      oldQuantity: number;
-      newQuantity: number;
-    };
-
-    const updates: Update[] = [];
-
-    // 3) For each ingredient line, find the first matching pantry item and decrement by 1
-    for (const line of ingredientLines) {
-      const normLine = normalize(line);
-      if (!normLine) continue;
-
-      const words = normLine.split(" ");
-      const key =
-        words.length >= 2 ? `${words[0]} ${words[1]}` : words[0];
-
-      if (!key || key.length < 3) continue;
-
-      const match = normalizedPantry.find((p) => p.normName.includes(key));
-      if (!match) continue;
-
-      const oldQty = match.quantity ?? 0;
-      if (oldQty <= 0) continue;
-
-      const newQty = Math.max(0, oldQty - 1);
-
-      const { error: updateError } = await supabase
-        .from("storage_items")
-        .update({ quantity: newQty })
-        .eq("id", match.id);
-
-      if (updateError) throw updateError;
-
-      updates.push({
-        id: match.id,
-        name: match.name,
-        oldQuantity: oldQty,
-        newQuantity: newQty,
-      });
-
-      match.quantity = newQty;
+    if (!Number.isFinite(currentQuantity)) {
+      return NextResponse.json(
+        { ok: false, error: "Storage item quantity is invalid" },
+        { status: 400 }
+      );
     }
 
-    const summary =
-      updates.length === 0
-        ? "No matching FrostPantry items were found for these ingredients."
-        : `Updated ${updates.length} FrostPantry item${
-            updates.length === 1 ? "" : "s"
-          }.`;
+    if (currentQuantity <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `${storageItem.name ?? "That item"} is already at 0.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (quantityUsed > currentQuantity) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Cannot use ${quantityUsed} when only ${currentQuantity} is available.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const newQuantity = currentQuantity - quantityUsed;
+
+    const { data: updatedRows, error: updateError } = await supabase
+      .from("storage_items")
+      .update({ quantity: newQuantity })
+      .eq("id", storageItemId)
+      .select("id, name, quantity, unit, location");
+
+    if (updateError) throw updateError;
+
+    const updatedItem = Array.isArray(updatedRows) ? updatedRows[0] : null;
 
     return NextResponse.json({
       ok: true,
-      updates,
-      summary,
+      recipeId,
+      ingredient,
+      storageItemId,
+      quantityUsed,
+      update: {
+        id: storageItem.id,
+        name: storageItem.name ?? null,
+        oldQuantity: currentQuantity,
+        newQuantity,
+        unit: storageItem.unit ?? null,
+        location: storageItem.location ?? null,
+      },
+      storageItem: updatedItem ?? {
+        id: storageItem.id,
+        name: storageItem.name ?? null,
+        quantity: newQuantity,
+        unit: storageItem.unit ?? null,
+        location: storageItem.location ?? null,
+      },
+      summary:
+        newQuantity === 0
+          ? `Used ${quantityUsed} from ${storageItem.name ?? "storage item"}. It is now out of stock.`
+          : `Used ${quantityUsed} from ${storageItem.name ?? "storage item"}.`,
     });
   } catch (err: any) {
     console.error("POST /api/recipes/[id]/use-pantry error:", err);
+
     return NextResponse.json(
       {
         ok: false,
-        error: err?.message ?? "Failed to update FrostPantry from recipe",
+        error: err?.message ?? "Failed to use pantry item",
       },
       { status: 500 }
     );

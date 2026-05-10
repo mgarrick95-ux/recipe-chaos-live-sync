@@ -18,6 +18,10 @@ type PantryMatchRow = {
   ingredient: string;
   pantryItem?: string | null;
   matchedStorageRawName?: string | null;
+  matchedStorageItemId?: string | null;
+  matchedStorageQuantity?: number | null;
+  matchedStorageUnit?: string | null;
+  matchedStorageLocation?: string | null;
   quantityAvailable?: number | null;
   matchKind?: string | null;
   isSoftMatch?: boolean;
@@ -134,6 +138,10 @@ export async function GET(_req: Request, { params }: Params) {
           ingredient: detail.ingredient,
           pantryItem: null,
           matchedStorageRawName: null,
+          matchedStorageItemId: null,
+          matchedStorageQuantity: null,
+          matchedStorageUnit: null,
+          matchedStorageLocation: null,
           quantityAvailable: null,
           matchKind: null,
           isSoftMatch: false,
@@ -145,13 +153,17 @@ export async function GET(_req: Request, { params }: Params) {
 
       const pantryItem = detail.matchedStorageRawName;
       const quantityAvailable = pantryItem
-        ? quantityByName.get(pantryItem.toLowerCase()) ?? null
-        : null;
+        ? quantityByName.get(pantryItem.toLowerCase()) ?? detail.matchedStorageQuantity ?? null
+        : detail.matchedStorageQuantity ?? null;
 
       const row: PantryMatchRow = {
         ingredient: detail.ingredient,
         pantryItem,
-        matchedStorageRawName: pantryItem,
+        matchedStorageRawName: detail.matchedStorageRawName,
+        matchedStorageItemId: detail.matchedStorageItemId,
+        matchedStorageQuantity: detail.matchedStorageQuantity,
+        matchedStorageUnit: detail.matchedStorageUnit,
+        matchedStorageLocation: detail.matchedStorageLocation,
         quantityAvailable,
         matchKind: detail.matchKind,
         isSoftMatch: detail.isSoftMatch,
@@ -189,5 +201,3 @@ export async function GET(_req: Request, { params }: Params) {
     );
   }
 }
-
-

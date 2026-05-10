@@ -62,6 +62,7 @@ const DAIRY_MILK_VARIANTS = new Set([
   "reduced-fat",
   "2%",
   "1%",
+  "chocolate",
   "2",
   "1",
 ]);
@@ -204,5 +205,7 @@ export function isDifferentProductByMarkers(aRaw: string, bRaw: string): boolean
 
   return false;
 }
+
+
 
 

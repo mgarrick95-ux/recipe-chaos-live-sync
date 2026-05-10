@@ -1,4 +1,3 @@
-// app/recipes/[id]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
@@ -121,9 +120,13 @@ function buildMatchByIngredient(pantryMatch: any): Record<string, IngredientMatc
     matchByIngredient[item.ingredient] = {
       state: "matched",
       pantryItem: item.pantryItem ?? item.matchedStorageRawName ?? null,
-      quantityAvailable: item.quantityAvailable ?? null,
+      quantityAvailable: item.quantityAvailable ?? item.matchedStorageQuantity ?? null,
       matchKind: item.matchKind ?? null,
       isSoftMatch: false,
+      matchedStorageItemId: item.matchedStorageItemId ?? null,
+      matchedStorageQuantity: item.matchedStorageQuantity ?? item.quantityAvailable ?? null,
+      matchedStorageUnit: item.matchedStorageUnit ?? null,
+      matchedStorageLocation: item.matchedStorageLocation ?? null,
     };
   }
 
@@ -132,11 +135,15 @@ function buildMatchByIngredient(pantryMatch: any): Record<string, IngredientMatc
     matchByIngredient[item.ingredient] = {
       state: item.inShoppingList ? "planned" : "partial",
       pantryItem: item.pantryItem ?? item.matchedStorageRawName ?? null,
-      quantityAvailable: item.quantityAvailable ?? null,
+      quantityAvailable: item.quantityAvailable ?? item.matchedStorageQuantity ?? null,
       matchKind: item.matchKind ?? null,
       isSoftMatch: true,
       inShoppingList: Boolean(item.inShoppingList),
       shoppingListItemName: item.shoppingListItemName ?? null,
+      matchedStorageItemId: item.matchedStorageItemId ?? null,
+      matchedStorageQuantity: item.matchedStorageQuantity ?? item.quantityAvailable ?? null,
+      matchedStorageUnit: item.matchedStorageUnit ?? null,
+      matchedStorageLocation: item.matchedStorageLocation ?? null,
     };
   }
 
@@ -150,6 +157,10 @@ function buildMatchByIngredient(pantryMatch: any): Record<string, IngredientMatc
       isSoftMatch: false,
       inShoppingList: Boolean(item.inShoppingList),
       shoppingListItemName: item.shoppingListItemName ?? null,
+      matchedStorageItemId: null,
+      matchedStorageQuantity: null,
+      matchedStorageUnit: null,
+      matchedStorageLocation: null,
     };
   }
 
@@ -266,7 +277,11 @@ export default async function RecipeDetailPage({ params }: PageProps) {
                 {ingredients.length === 0 ? (
                   <div className="mt-3 text-white/60">No ingredients yet.</div>
                 ) : (
-                  <PantryIngredientList ingredients={ingredients} matchByIngredient={matchByIngredient} />
+                  <PantryIngredientList
+                    recipeId={recipe.id}
+                    ingredients={ingredients}
+                    matchByIngredient={matchByIngredient}
+                  />
                 )}
               </div>
 
@@ -301,5 +316,3 @@ export default async function RecipeDetailPage({ params }: PageProps) {
     </div>
   );
 }
-
-

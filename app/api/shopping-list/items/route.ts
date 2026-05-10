@@ -65,6 +65,10 @@ export async function POST(req: Request) {
   const quantityText = coerceQuantityToText(body?.quantity);
   const isDerived = Boolean(body?.isDerived);
   const forceNewRow = Boolean(body?.forceNewRow);
+  const insertNormalizedName =
+    forceNewRow && !isDerived
+      ? `${ident.normalizedName}__manual__${Date.now()}`
+      : ident.normalizedName;
 
 
   const { data: existingRows, error: findErr } = await supabase
@@ -131,7 +135,7 @@ export async function POST(req: Request) {
     .insert({
       user_id: DEFAULT_USER_ID,
       name: ident.displayName,
-      normalized_name: ident.normalizedName,
+      normalized_name: insertNormalizedName,
       quantity: quantityText,
       unit: null,
       checked: false,
@@ -253,6 +257,9 @@ export async function DELETE(req: Request) {
     { headers: { "Cache-Control": "no-store" } }
   );
 }
+
+
+
 
 
 

@@ -1512,9 +1512,7 @@ export default function ShoppingListPage() {
             inputMilk.variants.length > 0 || milkB.variants.length > 0;
           const differ = aV !== bV;
           if (hasAnyVariant && differ) {
-            const ok = tokenSubsetMatch(inputToks, t) || tokenSubsetMatch(t, inputToks);
-            if (ok) return { kind: "variant", existing: it };
-            continue;
+            return { kind: "variant", existing: it };
           }
         }
       }
@@ -1578,14 +1576,7 @@ export default function ShoppingListPage() {
     }
 
     if (match.kind === "variant") {
-      setAddDupPrompt({
-        open: true,
-        existingId: match.existing.id,
-        existingName: match.existing.name,
-        requestedName: name,
-        actionIfYes: "add_new_row",
-      });
-      setNewItemName("");
+      await addManualProceed(name, true);
       return;
     }
 
@@ -1793,11 +1784,22 @@ export default function ShoppingListPage() {
             </div>
 
             <div className="mt-2 text-white/70">
-              1{" "}
-              <span className="text-white/85 font-semibold">
-                {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
-              </span>{" "}
-              already in list... do you need this one too?
+              {addDupPrompt.actionIfYes === "inc_existing" ? (
+                <>
+                  1{" "}
+                  <span className="text-white/85 font-semibold">
+                    {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
+                  </span>{" "}
+                  is already on your list. Add to existing or add as a separate entry?
+                </>
+              ) : (
+                <>
+                  <span className="text-white/85 font-semibold">
+                    {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
+                  </span>{" "}
+                  is already in list, but this may be a different version. Keep it separate?
+                </>
+              )}
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2 flex-wrap">
@@ -1809,45 +1811,91 @@ export default function ShoppingListPage() {
                 Cancel
               </button>
 
-              <button
-                type="button"
-                className={btn}
-                onClick={async () => {
-                  const prompt = addDupPrompt;
-                  if (!prompt) return;
+              {addDupPrompt.actionIfYes === "inc_existing" ? (
+                <>
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    onClick={async () => {
+                      const prompt = addDupPrompt;
+                      if (!prompt) return;
 
-                  setAddDupPrompt(null);
-        setPantryAddNotice(null);
+                      setAddDupPrompt(null);
+                      setPantryAddNotice(null);
 
-                  const id = prompt.existingId;
-                  const latest = items.find((x) => x.id === id);
-                  if (!latest) {
-                    await load();
-                    return;
-                  }
+                      const id = prompt.existingId;
+                      const latest = items.find((x) => x.id === id);
+                      if (!latest) {
+                        await load();
+                        return;
+                      }
 
-                  setStatus("Updating...");
-                  await patchItem(id, { quantity: itemQty(latest) + 1 });
-                  setStatus("");
-                }}
-              >
-                Add to existing
-              </button>
+                      setStatus("Updating...");
+                      await patchItem(id, { quantity: itemQty(latest) + 1 });
+                      setStatus("");
+                    }}
+                  >
+                    Add to existing
+                  </button>
 
-              <button
-                type="button"
-                className={btnPrimary}
-                onClick={async () => {
-                  const prompt = addDupPrompt;
-                  if (!prompt) return;
+                  <button
+                    type="button"
+                    className={btn}
+                    onClick={async () => {
+                      const prompt = addDupPrompt;
+                      if (!prompt) return;
 
-                  setAddDupPrompt(null);
-        setPantryAddNotice(null);
-                  await addManualProceed(prompt.requestedName, true);
-                }}
-              >
-                Keep separate
-              </button>
+                      setAddDupPrompt(null);
+                      setPantryAddNotice(null);
+                      await addManualProceed(prompt.requestedName, true);
+                    }}
+                  >
+                    Add separate entry
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={btn}
+                    onClick={async () => {
+                      const prompt = addDupPrompt;
+                      if (!prompt) return;
+
+                      setAddDupPrompt(null);
+                      setPantryAddNotice(null);
+
+                      const id = prompt.existingId;
+                      const latest = items.find((x) => x.id === id);
+                      if (!latest) {
+                        await load();
+                        return;
+                      }
+
+                      setStatus("Updating...");
+                      await patchItem(id, { quantity: itemQty(latest) + 1 });
+                      setStatus("");
+                    }}
+                  >
+                    Add to existing
+                  </button>
+
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    onClick={async () => {
+                      const prompt = addDupPrompt;
+                      if (!prompt) return;
+
+                      setAddDupPrompt(null);
+                      setPantryAddNotice(null);
+                      await addManualProceed(prompt.requestedName, true);
+                    }}
+                  >
+                    Keep separate
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -2781,31 +2829,4 @@ export default function ShoppingListPage() {
     </RcPageShell>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
