@@ -6,27 +6,32 @@
    RecipeChaos Base Theme (aligned with /recipes motif)
    ------------------------------------------------------- */
 
-:root {
+:root,
+html[data-theme="dark"] {
   /* Core */
   --bg: #050816;
-  --text: rgba(255, 255, 255, 0.92);
-  --muted: rgba(255, 255, 255, 0.7);
-  --muted-2: rgba(255, 255, 255, 0.5);
+  --text: rgba(255, 255, 255, 0.94);
+  --text-soft: rgba(255, 255, 255, 0.86);
+  --muted: rgba(255, 255, 255, 0.70);
+  --muted-2: rgba(255, 255, 255, 0.52);
 
   /* Surfaces */
   --panel: rgba(255, 255, 255, 0.05);
-  --card: rgba(255, 255, 255, 0.05);
-  --card-2: rgba(255, 255, 255, 0.07);
+  --panel-solid: #050816;
+  --panel-solid-translucent: rgba(5, 8, 22, 0.82);
+  --card: rgba(255, 255, 255, 0.06);
+  --card-2: rgba(255, 255, 255, 0.08);
+  --hover: rgba(255, 255, 255, 0.10);
 
   /* Lines / rings */
-  --border: rgba(255, 255, 255, 0.10);
-  --border-2: rgba(255, 255, 255, 0.14);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-2: rgba(255, 255, 255, 0.18);
 
   /* Accents */
-  --primary: #d946ef; /* fuchsia-500 */
-  --primary-hover: #e879f9; /* fuchsia-400 */
-  --danger: #dc2626; /* red-600 */
-  --danger-hover: #ef4444; /* red-500 */
+  --primary: #d946ef;
+  --primary-hover: #e879f9;
+  --danger: #dc2626;
+  --danger-hover: #ef4444;
 
   /* Radius */
   --r-lg: 16px;
@@ -37,7 +42,45 @@
   --shadow-soft: 0 12px 30px rgba(217, 70, 239, 0.18);
 
   /* Fonts */
-  --font-chaos: var(--font-amatic); /* ✅ Amatic SC Bold for hero titles only */
+  --font-chaos: var(--font-amatic);
+}
+
+html[data-theme="light"] {
+  /* Core */
+  --bg: #f6f7fb;
+  --text: rgba(15, 23, 42, 0.96);
+  --text-soft: rgba(15, 23, 42, 0.86);
+  --muted: rgba(15, 23, 42, 0.68);
+  --muted-2: rgba(15, 23, 42, 0.50);
+
+  /* Surfaces */
+  --panel: rgba(255, 255, 255, 0.82);
+  --panel-solid: #ffffff;
+  --panel-solid-translucent: rgba(255, 255, 255, 0.88);
+  --card: rgba(255, 255, 255, 0.92);
+  --card-2: rgba(248, 250, 252, 0.98);
+  --hover: rgba(15, 23, 42, 0.06);
+
+  /* Lines / rings */
+  --border: rgba(15, 23, 42, 0.14);
+  --border-2: rgba(15, 23, 42, 0.22);
+
+  /* Accents */
+  --primary: #c026d3;
+  --primary-hover: #a21caf;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+
+  /* Radius */
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-pill: 9999px;
+
+  /* Shadows */
+  --shadow-soft: 0 12px 30px rgba(15, 23, 42, 0.10);
+
+  /* Fonts */
+  --font-chaos: var(--font-amatic);
 }
 
 html,
@@ -233,3 +276,6 @@ a:hover {
   opacity: 0.95;
   pointer-events: none;
 }
+
+
+

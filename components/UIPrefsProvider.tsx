@@ -4,29 +4,26 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import {
   type BrainCapacity,
   type UIPrefs,
+  type ThemeMode,
   loadUIPrefs,
   saveUIPrefs,
   defaultUIPrefs,
   getSessionBrainCapacity,
   setSessionBrainCapacity,
   isSameLocalDay,
+  applyTheme,
 } from "@/lib/uiPrefs";
 
 type UIPrefsContextValue = {
-  // persisted prefs (localStorage)
   prefs: UIPrefs;
   setPrefs: React.Dispatch<React.SetStateAction<UIPrefs>>;
-
-  // convenience setters
   setTone: (tone: UIPrefs["tone"]) => void;
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
   setReduceChatter: (v: boolean) => void;
   setAskBrainDaily: (v: boolean) => void;
-
-  // session brain capacity (sessionStorage)
   brainCapacity: BrainCapacity;
   setBrainCapacity: (v: BrainCapacity) => void;
-
-  // prompt logic
   shouldPromptBrain: boolean;
   markBrainPromptCompletedToday: () => void;
 };
@@ -34,20 +31,22 @@ type UIPrefsContextValue = {
 const UIPrefsContext = createContext<UIPrefsContextValue | null>(null);
 
 export function UIPrefsProvider({ children }: { children: React.ReactNode }) {
-  // ---- prefs (localStorage) ----
   const [prefs, setPrefs] = useState<UIPrefs>(() => defaultUIPrefs());
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   useEffect(() => {
-    // load once on client
-    setPrefs(loadUIPrefs());
+    const loaded = loadUIPrefs();
+    setPrefs(loaded);
+    applyTheme(loaded.theme);
+    setPrefsLoaded(true);
   }, []);
 
   useEffect(() => {
-    // persist on change
+    if (!prefsLoaded) return;
     saveUIPrefs(prefs);
-  }, [prefs]);
+    applyTheme(prefs.theme);
+  }, [prefs, prefsLoaded]);
 
-  // ---- brain capacity (sessionStorage) ----
   const [brainCapacity, setBrainCapacityState] = useState<BrainCapacity>(() => {
     return getSessionBrainCapacity() ?? "normal";
   });
@@ -57,29 +56,33 @@ export function UIPrefsProvider({ children }: { children: React.ReactNode }) {
     setSessionBrainCapacity(v);
   }
 
-  // ---- derived: should we prompt today? ----
   const shouldPromptBrain = useMemo(() => {
     if (!prefs.askBrainDaily) return false;
-
     const last = prefs.lastBrainPromptISO;
     if (!last) return true;
-
-    const nowISO = new Date().toISOString();
-    return !isSameLocalDay(last, nowISO);
+    return !isSameLocalDay(last, new Date().toISOString());
   }, [prefs.askBrainDaily, prefs.lastBrainPromptISO]);
 
   function markBrainPromptCompletedToday() {
-    const nowISO = new Date().toISOString();
-    setPrefs((p) => ({ ...p, lastBrainPromptISO: nowISO }));
+    setPrefs((p) => ({ ...p, lastBrainPromptISO: new Date().toISOString() }));
   }
 
-  // ---- convenience setters ----
   function setTone(tone: UIPrefs["tone"]) {
     setPrefs((p) => ({ ...p, tone }));
   }
+
+  function setTheme(theme: ThemeMode) {
+    setPrefs((p) => ({ ...p, theme }));
+  }
+
+  function toggleTheme() {
+    setPrefs((p) => ({ ...p, theme: p.theme === "dark" ? "light" : "dark" }));
+  }
+
   function setReduceChatter(v: boolean) {
     setPrefs((p) => ({ ...p, reduceChatter: v }));
   }
+
   function setAskBrainDaily(v: boolean) {
     setPrefs((p) => ({ ...p, askBrainDaily: v }));
   }
@@ -89,6 +92,8 @@ export function UIPrefsProvider({ children }: { children: React.ReactNode }) {
       prefs,
       setPrefs,
       setTone,
+      setTheme,
+      toggleTheme,
       setReduceChatter,
       setAskBrainDaily,
       brainCapacity,
@@ -107,4 +112,3 @@ export function useUIPrefs() {
   if (!ctx) throw new Error("useUIPrefs must be used inside UIPrefsProvider");
   return ctx;
 }
-

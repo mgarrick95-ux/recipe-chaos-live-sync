@@ -1,6 +1,8 @@
+"use client";
+
 // components/Sidebar.tsx
 import Link from "next/link";
-import type React from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 
 type NavItem = {
   href: string;
@@ -17,25 +19,22 @@ const mainItems: NavItem[] = [
 
 export default function Sidebar() {
   return (
-    <nav className="h-screen w-[280px] border-r border-white/10 bg-[#050816] text-white">
+    <nav className="h-screen w-[280px] border-r border-[color:var(--border)] bg-[color:var(--panel-solid)] text-[color:var(--text)]">
       <div className="px-5 py-6">
-        {/* Header */}
         <div className="mb-6">
-          {/* Logo slot (wire this up when you add public assets) */}
-          {/* <img src="/logo.png" alt="RecipeChaos" className="h-10 w-auto" /> */}
-
           <div className="text-lg font-black tracking-tight">RecipeChaos</div>
-          <div className="text-xs text-white/60">Kitchen assistant (personal build)</div>
+          <div className="text-xs text-[color:var(--muted-2)]">
+            Kitchen assistant (personal build)
+          </div>
         </div>
 
         <div className="flex flex-col gap-6">
-          {/* Primary navigation */}
           <div className="flex flex-col gap-1">
             {mainItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-semibold text-white/90 ring-1 ring-transparent transition hover:bg-white/10 hover:text-white hover:ring-white/10"
+                className="flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-semibold text-[color:var(--text-soft)] ring-1 ring-transparent transition hover:bg-[color:var(--hover)] hover:text-[color:var(--text)] hover:ring-[color:var(--border)]"
               >
                 {item.icon ? <span className="text-base">{item.icon}</span> : null}
                 <span>{item.label}</span>
@@ -43,8 +42,7 @@ export default function Sidebar() {
             ))}
           </div>
 
-          {/* Quick action */}
-          <div className="rounded-3xl bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="rounded-3xl bg-[color:var(--card)] p-3 ring-1 ring-[color:var(--border)]">
             <Link
               href="/recipes/add"
               className="flex items-center justify-center rounded-2xl bg-[color:var(--primary)] px-4 py-2 text-sm font-extrabold text-white shadow-lg transition hover:bg-[color:var(--primary-hover)]"
@@ -53,7 +51,14 @@ export default function Sidebar() {
             </Link>
           </div>
 
-          <div className="text-xs text-white/55">
+          <div className="rounded-3xl bg-[color:var(--card)] p-3 ring-1 ring-[color:var(--border)]">
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[color:var(--muted-2)]">
+              Screen mode
+            </div>
+            <ThemeToggle />
+          </div>
+
+          <div className="text-xs text-[color:var(--muted-2)]">
             Tip: Add recipes via manual, URL, or photo — one place, no clutter.
           </div>
         </div>
@@ -61,4 +66,3 @@ export default function Sidebar() {
     </nav>
   );
 }
-

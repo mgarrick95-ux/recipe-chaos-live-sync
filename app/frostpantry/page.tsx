@@ -841,14 +841,14 @@ export default function FrostPantryPage() {
   ========================= */
 
   const tealPill =
-    "rounded-full bg-emerald-500/0 hover:bg-emerald-500/10 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 text-white/85 transition";
+    "rounded-full bg-emerald-500/0 hover:bg-emerald-500/10 px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] text-[color:var(--text-soft)] transition";
   const tealPillActive =
-    "rounded-full bg-emerald-500/20 hover:bg-emerald-500/25 px-5 py-3 text-sm font-extrabold ring-1 ring-white/10 text-white transition";
+    "rounded-full bg-emerald-500/20 hover:bg-emerald-500/25 px-5 py-3 text-sm font-extrabold ring-1 ring-[color:var(--border)] text-[color:var(--text)] transition";
 
   const addBtn =
-    "rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 text-white/90 transition";
+    "rounded-full bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] text-[color:var(--text)] transition";
   const popItem =
-    "w-full text-left rounded-xl px-4 py-3 text-sm font-semibold text-white/90 hover:bg-white/10 transition";
+    "w-full text-left rounded-xl px-4 py-3 text-sm font-semibold text-[color:var(--text)] hover:bg-[color:var(--hover)] transition";
 
   const heroChaos = [
     { id: "jar", emoji: "🫙" },
@@ -885,7 +885,7 @@ export default function FrostPantryPage() {
               </button>
 
               {addOptionsOpen ? (
-                <div className="absolute right-0 mt-2 w-[220px] rounded-2xl bg-[#0b1026]/95 ring-1 ring-white/10 shadow-xl p-2 z-50">
+                <div className="absolute right-0 mt-2 w-[220px] rounded-2xl bg-[color:var(--panel-solid)]/95 ring-1 ring-[color:var(--border)] shadow-xl p-2 z-50">
                   <button type="button" className={popItem} onClick={() => openPanel("type")}>
                     Type It
                   </button>
@@ -896,7 +896,7 @@ export default function FrostPantryPage() {
                     Upload It
                   </button>
 
-                  <div className="mt-2 pt-2 border-t border-white/10">
+                  <div className="mt-2 pt-2 border-t border-[color:var(--border)]">
                     <button
                       type="button"
                       className={popItem}
@@ -935,7 +935,7 @@ export default function FrostPantryPage() {
         >
           Duplicates
           {duplicateStats.groupCount > 0 ? (
-            <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-extrabold ring-1 ring-white/10">
+            <span className="ml-2 inline-flex items-center rounded-full bg-[color:var(--hover)] px-2 py-0.5 text-[11px] font-extrabold ring-1 ring-[color:var(--border)]">
               {duplicateStats.groupCount}
             </span>
           ) : null}
@@ -948,13 +948,13 @@ export default function FrostPantryPage() {
      Render
   ========================= */
 
-  const fieldLabel = "text-xs text-white/55";
+  const fieldLabel = "text-xs text-[color:var(--muted-2)]";
   const input =
-    "w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
+    "w-full rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] placeholder:text-[color:var(--muted-2)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
   const select =
-    "w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
+    "w-full rounded-2xl bg-[color:var(--panel-solid)] text-[color:var(--text)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40";
 
-  const iconBtn = "inline-flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white transition";
+  const iconBtn = "inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--text-soft)] hover:text-[color:var(--text)] transition";
   const iconBtnDisabled = "opacity-50 pointer-events-none";
 
   // "Inline duplicate UI" only appears when the Duplicates tab is active.
@@ -986,51 +986,51 @@ export default function FrostPantryPage() {
             }}
           />
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="w-full max-w-3xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 shadow-2xl p-6 text-white">
+            <div className="w-full max-w-3xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] shadow-2xl p-6 text-[color:var(--text)]">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <div className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
                     <span>Duplicates</span>
-                    <span className="text-white/60 text-sm font-semibold">({modalGroup.items.length})</span>
+                    <span className="text-[color:var(--muted)] text-sm font-semibold">({modalGroup.items.length})</span>
                   </div>
-                  <div className="mt-1 text-sm text-white/60">Review first. Merge only when it's truly the same thing.</div>
+                  <div className="mt-1 text-sm text-[color:var(--muted)]">Review first. Merge only when it's truly the same thing.</div>
                 </div>
 
                 <button
                   type="button"
                   onClick={closeDuplicateModal}
                   disabled={dupeBusy}
-                  className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2 font-semibold disabled:opacity-50"
+                  className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2 font-semibold disabled:opacity-50"
                 >
                   Close
                 </button>
               </div>
 
-              <div className="mt-4 rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                <div className="text-sm font-bold text-white/90">Group</div>
-                <div className="mt-1 text-sm text-white/70">
-                  <span className="font-semibold text-white/85">{modalGroup.name}</span>{" "}
-                  <span className="text-white/45"> - </span>{" "}
-                  <span className="text-white/70">{modalGroup.location}</span>
+              <div className="mt-4 rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4">
+                <div className="text-sm font-bold text-[color:var(--text)]">Group</div>
+                <div className="mt-1 text-sm text-[color:var(--muted)]">
+                  <span className="font-semibold text-[color:var(--text-soft)]">{modalGroup.name}</span>{" "}
+                  <span className="text-[color:var(--muted-2)]"> - </span>{" "}
+                  <span className="text-[color:var(--muted)]">{modalGroup.location}</span>
                 </div>
 
                 <div className="mt-3 grid gap-3">
                   {modalGroup.items.map((it) => (
                     <div
                       key={it.id}
-                      className="rounded-2xl bg-black/20 ring-1 ring-white/10 p-4 flex items-start justify-between gap-3 flex-wrap"
+                      className="rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4 flex items-start justify-between gap-3 flex-wrap"
                     >
                       <div className="min-w-0">
-                        <div className="font-extrabold tracking-tight text-white/95">
+                        <div className="font-extrabold tracking-tight text-[color:var(--text)]">
                           {it.quantity} {it.unit}
                         </div>
-                        <div className="mt-1 text-xs text-white/55">
+                        <div className="mt-1 text-xs text-[color:var(--muted-2)]">
                           {prettyDateShort(it.stored_on) ? `stored ${prettyDateShort(it.stored_on)}` : ""}
                           {it.use_by ? `  -  use by ${prettyDateShort(it.use_by)}` : ""}
                           {it.is_leftover ? "  -  leftover" : ""}
                         </div>
-                        {it.notes ? <div className="mt-2 text-xs text-white/50">{it.notes}</div> : null}
-                        <div className="mt-2 text-[11px] text-white/35 break-all">id: {it.id}</div>
+                        {it.notes ? <div className="mt-2 text-xs text-[color:var(--muted-2)]">{it.notes}</div> : null}
+                        <div className="mt-2 text-[11px] text-[color:var(--muted-2)] break-all">id: {it.id}</div>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1042,7 +1042,7 @@ export default function FrostPantryPage() {
                             "rounded-2xl px-4 py-2 text-sm font-extrabold ring-1 transition",
                             dupeKeepId === it.id
                               ? "bg-[rgba(34,211,238,0.25)] ring-[rgba(34,211,238,0.65)] text-white"
-                              : "bg-white/10 hover:bg-white/15 ring-white/10 text-white/85",
+                              : "bg-[color:var(--hover)] hover:bg-[color:var(--hover)] ring-[color:var(--border)] text-[color:var(--text-soft)]",
                             dupeBusy ? "opacity-60" : "",
                           ].join(" ")}
                           title="Keep this one"
@@ -1064,12 +1064,12 @@ export default function FrostPantryPage() {
                 </div>
 
                 <div className="mt-4 flex items-start justify-between gap-3 flex-wrap">
-                  <div className="text-xs text-white/55">
+                  <div className="text-xs text-[color:var(--muted-2)]">
                     {modalEligibility.ok ? (
                       <span>Merge available (same unit, dates, notes, leftover flag).</span>
                     ) : (
                       <span>
-                        Merge disabled: <span className="text-white/70 font-semibold">{modalEligibility.reason}</span>
+                        Merge disabled: <span className="text-[color:var(--muted)] font-semibold">{modalEligibility.reason}</span>
                       </span>
                     )}
                   </div>
@@ -1097,7 +1097,7 @@ export default function FrostPantryPage() {
                 ) : null}
               </div>
 
-              <div className="mt-4 text-xs text-white/45">
+              <div className="mt-4 text-xs text-[color:var(--muted-2)]">
                 Tip: if these look similar-but-not-the-same, keep them separate. The chip is a heads-up, not a mandate.
               </div>
             </div>
@@ -1107,11 +1107,11 @@ export default function FrostPantryPage() {
 
       {/* Type It */}
       {addPanel === "type" ? (
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
+        <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-2xl font-extrabold tracking-tight text-white">Type It</div>
-              <div className="mt-1 text-sm text-white/60">Quick add an item.</div>
+              <div className="text-2xl font-extrabold tracking-tight text-[color:var(--text)]">Type It</div>
+              <div className="mt-1 text-sm text-[color:var(--muted)]">Quick add an item.</div>
             </div>
           </div>
 
@@ -1121,14 +1121,14 @@ export default function FrostPantryPage() {
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
                 placeholder="Item name"
-                className="w-[320px] rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
+                className="w-[320px] rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] placeholder:text-[color:var(--muted-2)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
                 autoFocus
               />
 
               <select
                 value={addLocation}
                 onChange={(e) => setAddLocation(e.target.value as Location)}
-                className="w-[180px] rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
+                className="w-[180px] rounded-2xl bg-[color:var(--panel-solid)] text-[color:var(--text)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
               >
                 <option value="Freezer">Freezer</option>
                 <option value="Fridge">Fridge</option>
@@ -1140,30 +1140,30 @@ export default function FrostPantryPage() {
                 min={1}
                 value={addQty}
                 onChange={(e) => setAddQty(Number(e.target.value) || 1)}
-                className="w-[120px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
+                className="w-[120px] rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
               />
 
               <input
                 value={addUnit}
                 onChange={(e) => setAddUnit(e.target.value)}
                 placeholder="unit"
-                className="w-[160px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
+                className="w-[160px] rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
               />
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1">
-                <div className="text-xs text-white/50">Stored on</div>
+                <div className="text-xs text-[color:var(--muted-2)]">Stored on</div>
                 <input
                   type="date"
                   value={addStoredOn}
                   onChange={(e) => setAddStoredOn(e.target.value)}
-                  className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
+                  className="w-[220px] rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <div className="text-xs text-white/50">Use by (optional)</div>
+                <div className="text-xs text-[color:var(--muted-2)]">Use by (optional)</div>
                 <input
                   type="date"
                   value={addUseBy}
@@ -1172,13 +1172,13 @@ export default function FrostPantryPage() {
                     setAddUseBy(next);
                     setAddUseByAuto(next.trim() === "");
                   }}
-                  className="w-[220px] rounded-2xl bg-white/5 text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
+                  className="w-[220px] rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-400/40"
                 />
               </div>
 
-              <div className="text-xs text-white/45 pb-2">
+              <div className="text-xs text-[color:var(--muted-2)] pb-2">
                 Defaults: Fridge 30d  -  Pantry/Freezer 6mo
-                {!addUseByAuto ? <span className="text-white/40">  -  manual</span> : null}
+                {!addUseByAuto ? <span className="text-[color:var(--muted-2)]">  -  manual</span> : null}
               </div>
             </div>
 
@@ -1186,7 +1186,7 @@ export default function FrostPantryPage() {
               <button
                 type="button"
                 onClick={() => setAddPanel("none")}
-                className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3 text-white/90"
+                className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3 text-[color:var(--text)]"
               >
                 Never mind
               </button>
@@ -1205,9 +1205,9 @@ export default function FrostPantryPage() {
 
       {/* Paste It */}
       {addPanel === "paste" ? (
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
-          <div className="text-2xl font-extrabold tracking-tight text-white">Paste It</div>
-          <div className="mt-1 text-sm text-white/60">Paste receipt text. Review first. Add only what you want.</div>
+        <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-6">
+          <div className="text-2xl font-extrabold tracking-tight text-[color:var(--text)]">Paste It</div>
+          <div className="mt-1 text-sm text-[color:var(--muted)]">Paste receipt text. Review first. Add only what you want.</div>
 
           <div className="mt-5">
             <ReceiptScanTool
@@ -1225,9 +1225,9 @@ export default function FrostPantryPage() {
 
       {/* Upload It */}
       {addPanel === "upload" ? (
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
-          <div className="text-2xl font-extrabold tracking-tight text-white">Upload It</div>
-          <div className="mt-1 text-sm text-white/60">Upload a receipt file. Review first. Add only what you want.</div>
+        <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-6">
+          <div className="text-2xl font-extrabold tracking-tight text-[color:var(--text)]">Upload It</div>
+          <div className="mt-1 text-sm text-[color:var(--muted)]">Upload a receipt file. Review first. Add only what you want.</div>
 
           <div className="mt-5">
             <ReceiptScanTool
@@ -1250,23 +1250,23 @@ export default function FrostPantryPage() {
 
       {/* Duplicate banner (single button: Review all) */}
       {dupBannerVisible ? (
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 text-white">
+        <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-5 text-[color:var(--text)]">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <div className="text-sm font-extrabold tracking-tight">
                 Duplicates found{" "}
-                <span className="text-white/60 font-semibold">
+                <span className="text-[color:var(--muted)] font-semibold">
                   ({duplicateStats.groupCount} group{duplicateStats.groupCount === 1 ? "" : "s"})
                 </span>
               </div>
-              <div className="mt-1 text-xs text-white/55">Not a problem. Just a heads-up. Review if you want.</div>
+              <div className="mt-1 text-xs text-[color:var(--muted-2)]">Not a problem. Just a heads-up. Review if you want.</div>
             </div>
 
             <button
               type="button"
               onClick={reviewAllDuplicates}
               disabled={duplicateGroups.length === 0}
-              className="rounded-2xl bg-[rgba(34,211,238,0.85)] hover:bg-[rgba(34,211,238,0.95)] px-4 py-2 text-sm font-extrabold text-black disabled:opacity-50 ring-1 ring-white/10"
+              className="rounded-2xl bg-[rgba(34,211,238,0.85)] hover:bg-[rgba(34,211,238,0.95)] px-4 py-2 text-sm font-extrabold text-black disabled:opacity-50 ring-1 ring-[color:var(--border)]"
               title="Review duplicates"
             >
               Review all
@@ -1277,17 +1277,17 @@ export default function FrostPantryPage() {
 
       {/* Use Soon-ish */}
       {soonishMain.length > 0 ? (
-        <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-6 text-white">
+        <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-6 text-[color:var(--text)]">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-2xl font-extrabold tracking-tight">Use Soon-ish</h2>
-              <p className="mt-2 text-white/70">Worth a quick look.</p>
+              <p className="mt-2 text-[color:var(--muted)]">Worth a quick look.</p>
             </div>
 
             <button
               type="button"
               onClick={() => setActiveFilter("soonish")}
-              className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10"
+              className="rounded-full bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)]"
             >
               {soonishRemaining > 0 ? `View ${soonishRemaining} more items` : "View"}
             </button>
@@ -1296,7 +1296,7 @@ export default function FrostPantryPage() {
           <div className="mt-5 grid gap-2">
             {soonishMain.map((i) => (
               <div key={i.id} className="flex items-center justify-between gap-3">
-                <div className="text-white/85 font-semibold truncate">{i.name}</div>
+                <div className="text-[color:var(--text-soft)] font-semibold truncate">{i.name}</div>
                 <div className="flex items-center gap-2 shrink-0">
                   {i.is_leftover ? <Chip text="Leftover" /> : null}
                   <Chip text={i.location} />
@@ -1309,16 +1309,16 @@ export default function FrostPantryPage() {
 
       {/* Expired mini */}
       {expiredItems.length > 0 ? (
-        <div className="mt-3 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4 text-white">
+        <div className="mt-3 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4 text-[color:var(--text)]">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="text-sm text-white/75">
-              <span className="font-semibold text-white/85">Expired</span>{" "}
-              <span className="text-white/55">({expiredItems.length})</span>
+            <div className="text-sm text-[color:var(--muted)]">
+              <span className="font-semibold text-[color:var(--text-soft)]">Expired</span>{" "}
+              <span className="text-[color:var(--muted-2)]">({expiredItems.length})</span>
             </div>
             <button
               type="button"
               onClick={() => setActiveFilter("expired")}
-              className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-semibold ring-1 ring-white/10"
+              className="rounded-full bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2 text-sm font-semibold ring-1 ring-[color:var(--border)]"
             >
               View
             </button>
@@ -1327,41 +1327,41 @@ export default function FrostPantryPage() {
       ) : null}
 
       {/* Actions bar */}
-      <div className="mt-8 rounded-3xl bg-white/5 ring-1 ring-white/10 p-5 text-white">
+      <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-5 text-[color:var(--text)]">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-sm text-white/60">
-            Showing <span className="text-white/80 font-semibold">{visibleItems.length}</span> item
+          <div className="text-sm text-[color:var(--muted)]">
+            Showing <span className="text-[color:var(--text-soft)] font-semibold">{visibleItems.length}</span> item
             {visibleItems.length === 1 ? "" : "s"}.
-            {activeFilter === "duplicates" ? <span className="ml-2 text-white/45">(duplicates view)</span> : null}
+            {activeFilter === "duplicates" ? <span className="ml-2 text-[color:var(--muted-2)]">(duplicates view)</span> : null}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="rounded-full bg-white/6 ring-1 ring-white/10 px-4 py-2 text-sm text-white/75">
+            <div className="rounded-full bg-[color:var(--card)] ring-1 ring-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--muted)]">
               Shop day:{" "}
               <select
                 value={shopDay}
                 onChange={(e) => setShopDay(e.target.value)}
-                className="bg-transparent outline-none text-white/90 font-semibold"
+                className="bg-transparent outline-none text-[color:var(--text)] font-semibold"
               >
-                <option className="bg-[#0b1026]" value="Sunday">
+                <option className="bg-[color:var(--panel-solid)]" value="Sunday">
                   Sunday
                 </option>
-                <option className="bg-[#0b1026]" value="Monday">
+                <option className="bg-[color:var(--panel-solid)]" value="Monday">
                   Monday
                 </option>
-                <option className="bg-[#0b1026]" value="Tuesday">
+                <option className="bg-[color:var(--panel-solid)]" value="Tuesday">
                   Tuesday
                 </option>
-                <option className="bg-[#0b1026]" value="Wednesday">
+                <option className="bg-[color:var(--panel-solid)]" value="Wednesday">
                   Wednesday
                 </option>
-                <option className="bg-[#0b1026]" value="Thursday">
+                <option className="bg-[color:var(--panel-solid)]" value="Thursday">
                   Thursday
                 </option>
-                <option className="bg-[#0b1026]" value="Friday">
+                <option className="bg-[color:var(--panel-solid)]" value="Friday">
                   Friday
                 </option>
-                <option className="bg-[#0b1026]" value="Saturday">
+                <option className="bg-[color:var(--panel-solid)]" value="Saturday">
                   Saturday
                 </option>
               </select>
@@ -1371,12 +1371,12 @@ export default function FrostPantryPage() {
               type="button"
               onClick={toggleSelectAllFiltered}
               disabled={filteredIds.length === 0}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3 disabled:opacity-50"
+              className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3 disabled:opacity-50"
             >
               {selectedAllFiltered ? "Unselect all (view)" : "Select all (view)"}
             </button>
 
-            <button type="button" onClick={loadItems} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3">
+            <button type="button" onClick={loadItems} className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3">
               Refresh
             </button>
 
@@ -1396,13 +1396,13 @@ export default function FrostPantryPage() {
 
       {/* Main list */}
       {loading ? (
-        <div className="mt-8 text-white/70">Loading...</div>
+        <div className="mt-8 text-[color:var(--muted)]">Loading...</div>
       ) : visibleItems.length === 0 ? (
-        <div className="mt-8 text-white/55">
-          <div className="font-semibold text-white/70">
+        <div className="mt-8 text-[color:var(--muted-2)]">
+          <div className="font-semibold text-[color:var(--muted)]">
             {activeFilter === "duplicates" ? "No duplicates right now." : "Nothing here yet."}
           </div>
-          <div className="mt-1 text-sm text-white/50">
+          <div className="mt-1 text-sm text-[color:var(--muted-2)]">
             {activeFilter === "duplicates"
               ? "Your pantry is behaving. Suspicious."
               : "Add an item when you feel like it. Yes, even the mystery rice from 2014."}
@@ -1422,7 +1422,7 @@ export default function FrostPantryPage() {
             const mergeReady = Boolean(itemGroupKey && mergeableGroupKeySet.has(itemGroupKey));
 
             return (
-              <div key={item.id} className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 text-white">
+              <div key={item.id} className="rounded-3xl bg-[color:var(--card)] p-6 ring-1 ring-[color:var(--border)] text-[color:var(--text)]">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex items-start gap-4">
                     <label className="flex items-center gap-2 pt-1 cursor-pointer">
@@ -1461,19 +1461,19 @@ export default function FrostPantryPage() {
                         <Chip text={item.location} />
                       </div>
 
-                      <div className="mt-2 text-white/55 text-sm">
+                      <div className="mt-2 text-[color:var(--muted-2)] text-sm">
                         {prettyDateShort(item.stored_on) ? `stored ${prettyDateShort(item.stored_on)}` : ""}
                         {item.use_by ? `  -  use by ${prettyDateShort(item.use_by)}` : ""}
                       </div>
 
-                      {item.notes ? <div className="mt-2 text-white/50 text-sm">{item.notes}</div> : null}
+                      {item.notes ? <div className="mt-2 text-[color:var(--muted-2)] text-sm">{item.notes}</div> : null}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
                       <button
-                        className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2"
+                        className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2"
                         disabled={busyId === item.id || bulkBusy || editBusy}
                         onClick={() => changeQuantity(item.id, -1)}
                         type="button"
@@ -1481,12 +1481,12 @@ export default function FrostPantryPage() {
                         "
                       </button>
 
-                      <div className="min-w-[120px] text-center font-semibold text-white/85">
+                      <div className="min-w-[120px] text-center font-semibold text-[color:var(--text-soft)]">
                         {item.quantity} {item.unit}
                       </div>
 
                       <button
-                        className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2"
+                        className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2"
                         disabled={busyId === item.id || bulkBusy || editBusy}
                         onClick={() => changeQuantity(item.id, +1)}
                         type="button"
@@ -1527,11 +1527,11 @@ export default function FrostPantryPage() {
 
                 {/* Inline edit panel */}
                 {isEditing && editDraft ? (
-                  <div className="mt-6 rounded-3xl bg-black/20 ring-1 ring-white/10 p-5">
+                  <div className="mt-6 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-5">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div>
                         <div className="text-lg font-extrabold tracking-tight">Edit item</div>
-                        <div className="mt-1 text-sm text-white/60">Inline, on purpose. No teleporting to another page.</div>
+                        <div className="mt-1 text-sm text-[color:var(--muted)]">Inline, on purpose. No teleporting to another page.</div>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1539,7 +1539,7 @@ export default function FrostPantryPage() {
                           type="button"
                           onClick={cancelInlineEdit}
                           disabled={editBusy}
-                          className="rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                          className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2 text-sm font-semibold disabled:opacity-50"
                         >
                           Cancel
                         </button>
@@ -1629,14 +1629,14 @@ export default function FrostPantryPage() {
                           }}
                           className={input}
                         />
-                        <div className="mt-1 text-xs text-white/45">
+                        <div className="mt-1 text-xs text-[color:var(--muted-2)]">
                           Defaults: Fridge 30d  -  Pantry/Freezer 6mo
-                          {!editUseByAuto ? <span className="text-white/40">  -  manual</span> : null}
+                          {!editUseByAuto ? <span className="text-[color:var(--muted-2)]">  -  manual</span> : null}
                         </div>
                       </div>
 
                       <div className="md:col-span-2">
-                        <label className="inline-flex items-center gap-2 text-sm text-white/80">
+                        <label className="inline-flex items-center gap-2 text-sm text-[color:var(--text-soft)]">
                           <input
                             type="checkbox"
                             checked={Boolean(editDraft.is_leftover)}
@@ -1691,6 +1691,8 @@ function FilterPill({
     </button>
   );
 }
+
+
 
 
 

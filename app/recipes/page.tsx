@@ -344,9 +344,9 @@ export default function RecipesPage() {
   }, [recipes, avoidRaw, suggestedSeed]);
 
   const tabPill =
-    "group relative inline-flex items-center gap-3 rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition";
+    "group relative inline-flex items-center gap-3 rounded-full bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] transition";
   const tabPillActive =
-    "group relative inline-flex items-center gap-3 rounded-full bg-[var(--rc-accent)] hover:bg-[var(--rc-accent-hover)] px-5 py-3 text-sm font-extrabold text-white ring-1 ring-white/10 transition shadow-[0_12px_30px_rgba(255,153,51,0.18)]";
+    "group relative inline-flex items-center gap-3 rounded-full bg-[var(--rc-accent)] hover:bg-[var(--rc-accent-hover)] px-5 py-3 text-sm font-extrabold text-white ring-1 ring-[color:var(--border)] transition shadow-[0_12px_30px_rgba(255,153,51,0.18)]";
 
   function goSaveSuggestion(s: any) {
     const title = String(s?.title ?? "").trim();
@@ -367,7 +367,7 @@ export default function RecipesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050816] text-white">
+    <div className="rc-page">
       <PageHero
         title="Recipes"
         subtitle="No rules. No pressure. Just food."
@@ -385,7 +385,7 @@ export default function RecipesPage() {
               <span>My Recipes</span>
               <span
                 className={
-                  tab === "mine" ? "text-white/90 text-[11px] font-semibold" : "text-white/60 text-[11px] font-semibold"
+                  tab === "mine" ? "text-[color:var(--text)] text-[11px] font-semibold" : "text-[color:var(--muted)] text-[11px] font-semibold"
                 }
               >
                 The usual suspects.
@@ -401,7 +401,7 @@ export default function RecipesPage() {
             <span className="flex flex-col items-start leading-tight">
               <span className="flex items-center gap-2">
                 Suggested{" "}
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold text-white/80 ring-1 ring-white/10">
+                <span className="rounded-full bg-[color:var(--hover)] px-2 py-0.5 text-[11px] font-bold text-[color:var(--text-soft)] ring-1 ring-[color:var(--border)]">
                   Coming soon
                 </span>
               </span>
@@ -409,7 +409,7 @@ export default function RecipesPage() {
                 className={
                   tab === "suggested"
                     ? "text-black/80 text-[11px] font-semibold"
-                    : "text-white/60 text-[11px] font-semibold"
+                    : "text-[color:var(--muted)] text-[11px] font-semibold"
                 }
               >
                 Let me find you something.
@@ -423,22 +423,22 @@ export default function RecipesPage() {
         {tab === "mine" ? (
           <>
             {/* Controls */}
-            <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-5">
+            <div className="rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-5">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex flex-col gap-2">
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search recipes..."
-                    className="w-full sm:w-[320px] max-w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
+                    className="w-full sm:w-[320px] max-w-full rounded-2xl bg-[color:var(--card)] text-white placeholder:text-[color:var(--muted-2)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
-                  <div className="text-xs text-white/45">Searches titles, ingredients, and instructions. No judgment.</div>
+                  <div className="text-xs text-[color:var(--muted-2)]">Searches titles, ingredients, and instructions. No judgment.</div>
                 </div>
 
                 <select
                   value={sortMode}
                   onChange={(e) => setSortMode(e.target.value as SortMode)}
-                  className="w-full sm:w-[220px] max-w-full rounded-2xl bg-[#0b1026] text-white ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
+                  className="w-full sm:w-[220px] max-w-full rounded-2xl bg-[color:var(--panel-solid)] text-white ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                 >
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
@@ -446,12 +446,12 @@ export default function RecipesPage() {
                   <option value="za">Z to A</option>
                 </select>
 
-                <button type="button" onClick={resetFilters} className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3" title="Reset filters">
+                <button type="button" onClick={resetFilters} className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3" title="Reset filters">
                   Reset
                 </button>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-start gap-6 text-white/80">
+              <div className="mt-4 flex flex-wrap items-start gap-6 text-[color:var(--text-soft)]">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -475,23 +475,23 @@ export default function RecipesPage() {
                   </label>
 
                   {noBuyOnly && !loadingStorage && !storageError ? (
-                    <div className="text-xs text-white/55 pl-6">Pantry's got this.</div>
+                    <div className="text-xs text-[color:var(--muted-2)] pl-6">Pantry's got this.</div>
                   ) : null}
 
-                  {storageError ? <div className="text-xs text-white/40 pl-6">(Needs Pantry &amp; Freezer loaded)</div> : null}
+                  {storageError ? <div className="text-xs text-[color:var(--muted-2)] pl-6">(Needs Pantry &amp; Freezer loaded)</div> : null}
                 </div>
               </div>
             </div>
 
             <div className="mt-8">
               {loadingRecipes ? (
-                <div className="text-white/70">Loading…</div>
+                <div className="text-[color:var(--muted)]">Loading…</div>
               ) : recipesError ? (
                 <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-5 py-4 text-red-100">{recipesError}</div>
               ) : filtered.length === 0 ? (
-                <div className="text-white/55">
-                  <div className="font-semibold text-white/70">No matches.</div>
-                  <div className="mt-1 text-sm text-white/50">Try fewer words or a different vibe.</div>
+                <div className="text-[color:var(--muted-2)]">
+                  <div className="font-semibold text-[color:var(--muted)]">No matches.</div>
+                  <div className="mt-1 text-sm text-[color:var(--muted-2)]">Try fewer words or a different vibe.</div>
                 </div>
               ) : (
                 <div className="grid gap-6 sm:grid-cols-2">
@@ -511,7 +511,7 @@ export default function RecipesPage() {
 
                     const showStorageBits = !loadingStorage && !storageError && summary.total > 0;
 
-                    let inventoryClass = "text-white/70 font-normal";
+                    let inventoryClass = "text-[color:var(--muted)] font-normal";
                     let inventoryToneState: "good" | "some" | "low" = "low";
 
                     if (showStorageBits) {
@@ -535,7 +535,7 @@ export default function RecipesPage() {
                     const closeTitle = buildCloseMatchTitle(summary.details || []);
 
                     return (
-                      <div key={r.id} className="relative rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
+                      <div key={r.id} className="relative rounded-3xl bg-[color:var(--card)] p-7 ring-1 ring-[color:var(--border)]">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -553,20 +553,20 @@ export default function RecipesPage() {
                         <Link href={`/recipes/${r.id}`} className="block">
                           <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight pr-10">{r.title}</h2>
 
-                          {r.description ? <p className="mt-2 text-white/70 line-clamp-2">{r.description}</p> : null}
+                          {r.description ? <p className="mt-2 text-[color:var(--muted)] line-clamp-2">{r.description}</p> : null}
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             {serves != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Serves {serves}</span>
+                              <span className="rounded-full bg-[color:var(--hover)] px-3 py-1 text-sm">Serves {serves}</span>
                             ) : null}
                             {r.prep_minutes != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Prep {r.prep_minutes}m</span>
+                              <span className="rounded-full bg-[color:var(--hover)] px-3 py-1 text-sm">Prep {r.prep_minutes}m</span>
                             ) : null}
                             {r.cook_minutes != null ? (
-                              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">Cook {r.cook_minutes}m</span>
+                              <span className="rounded-full bg-[color:var(--hover)] px-3 py-1 text-sm">Cook {r.cook_minutes}m</span>
                             ) : null}
                             {tags.slice(0, 3).map((t) => (
-                              <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                              <span key={t} className="rounded-full bg-[color:var(--hover)] px-3 py-1 text-sm">
                                 {t}
                               </span>
                             ))}
@@ -581,7 +581,7 @@ export default function RecipesPage() {
                               in Pantry &amp; Freezer
                               {softHaveCount > 0 ? (
                                 <span
-                                  className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75 ring-1 ring-white/10"
+                                  className="ml-2 inline-flex items-center gap-1 rounded-full bg-[color:var(--hover)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--muted)] ring-1 ring-[color:var(--border)]"
                                   title={closeTitle || `${softHaveCount} similar match(es)`}
                                 >
                                   ≈ˆ Similar {softHaveCount}
@@ -595,7 +595,7 @@ export default function RecipesPage() {
                           <button
                             type="button"
                             onClick={() => (window.location.href = `/recipes/${r.id}/edit`)}
-                            className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+                            className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3"
                           >
                             Edit
                           </button>
@@ -625,16 +625,16 @@ export default function RecipesPage() {
         ) : (
           <>
             {/* Suggested tab (unchanged) */}
-            <div className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-6">
+            <div className="rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-6">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-2xl font-extrabold tracking-tight">
                     Suggested recipes{" "}
-                    <span className="ml-2 align-middle rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold text-white/80 ring-1 ring-white/10">
+                    <span className="ml-2 align-middle rounded-full bg-[color:var(--hover)] px-2 py-0.5 text-[11px] font-bold text-[color:var(--text-soft)] ring-1 ring-[color:var(--border)]">
                       Coming soon
                     </span>
                   </h2>
-                  <p className="mt-2 text-white/70">
+                  <p className="mt-2 text-[color:var(--muted)]">
                     Let me find you something. For now, this is a stub pool while we wire up the real version.
                   </p>
                 </div>
@@ -642,7 +642,7 @@ export default function RecipesPage() {
                 <button
                   type="button"
                   onClick={() => setSuggestedSeed(makeSeed())}
-                  className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 font-semibold ring-1 ring-white/10"
+                  className="rounded-full bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3 font-semibold ring-1 ring-[color:var(--border)]"
                   title="Shuffle the suggestions"
                 >
                   New batch
@@ -650,30 +650,30 @@ export default function RecipesPage() {
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">Never suggest (comma-separated)</div>
-                  <div className="mt-2 text-xs text-white/60">Example: kale, chickpeas, capers, alfredo, sausage</div>
+                <div className="rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4">
+                  <div className="text-sm font-bold text-[color:var(--text)]">Never suggest (comma-separated)</div>
+                  <div className="mt-2 text-xs text-[color:var(--muted)]">Example: kale, chickpeas, capers, alfredo, sausage</div>
 
                   <input
                     value={avoidRaw}
                     onChange={(e) => setAvoidRaw(e.target.value)}
                     placeholder="kale, chickpeas, capers..."
-                    className="mt-3 w-full rounded-2xl bg-white/5 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
+                    className="mt-3 w-full rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-[rgba(34,211,238,0.45)]"
                   />
 
-                  <div className="mt-3 text-xs text-white/50">Saved locally.</div>
+                  <div className="mt-3 text-xs text-[color:var(--muted-2)]">Saved locally.</div>
                 </div>
 
-                <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-                  <div className="text-sm font-bold text-white/90">What it's learning right now</div>
-                  <div className="mt-2 text-xs text-white/60">We rank suggestions using your recipe tags + favorites.</div>
+                <div className="rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4">
+                  <div className="text-sm font-bold text-[color:var(--text)]">What it's learning right now</div>
+                  <div className="mt-2 text-xs text-[color:var(--muted)]">We rank suggestions using your recipe tags + favorites.</div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     {suggested.preferredTags.length === 0 ? (
-                      <span className="text-white/60 text-sm">Add some tags/favorites to improve recommendations.</span>
+                      <span className="text-[color:var(--muted)] text-sm">Add some tags/favorites to improve recommendations.</span>
                     ) : (
                       suggested.preferredTags.map((t) => (
-                        <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                        <span key={t} className="rounded-full bg-[color:var(--hover)] px-3 py-1 text-sm">
                           {t}
                         </span>
                       ))
@@ -685,21 +685,21 @@ export default function RecipesPage() {
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
               {suggested.suggestions.map((s: any) => (
-                <div key={s.id} className="rounded-3xl bg-white/5 p-7 ring-1 ring-white/10">
+                <div key={s.id} className="rounded-3xl bg-[color:var(--card)] p-7 ring-1 ring-[color:var(--border)]">
                   <div className="text-3xl font-extrabold tracking-tight">{s.title}</div>
-                  {s.description ? <div className="mt-2 text-white/70">{s.description}</div> : null}
+                  {s.description ? <div className="mt-2 text-[color:var(--muted)]">{s.description}</div> : null}
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {(s.tags || []).slice(0, 4).map((t: string) => (
-                      <span key={t} className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                      <span key={t} className="rounded-full bg-[color:var(--hover)] px-3 py-1 text-sm">
                         {t}
                       </span>
                     ))}
                   </div>
 
-                  <div className="mt-5 text-white/60 text-sm">
+                  <div className="mt-5 text-[color:var(--muted)] text-sm">
                     Ingredients (keywords):{" "}
-                    <span className="text-white/75">{(s.ingredients || []).slice(0, 6).join(", ")}</span>
+                    <span className="text-[color:var(--muted)]">{(s.ingredients || []).slice(0, 6).join(", ")}</span>
                   </div>
 
                   <div className="mt-6 flex items-center gap-3">
@@ -716,16 +716,16 @@ export default function RecipesPage() {
                         href={s.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-2xl bg-white/10 hover:bg-white/15 px-5 py-3"
+                        className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-5 py-3"
                       >
                         View source
                       </a>
                     ) : (
-                      <span className="text-xs text-white/40">No source URL</span>
+                      <span className="text-xs text-[color:var(--muted-2)]">No source URL</span>
                     )}
                   </div>
 
-                  {s.source_name ? <div className="mt-3 text-xs text-white/40">Source: {s.source_name}</div> : null}
+                  {s.source_name ? <div className="mt-3 text-xs text-[color:var(--muted-2)]">Source: {s.source_name}</div> : null}
                 </div>
               ))}
             </div>
@@ -735,6 +735,7 @@ export default function RecipesPage() {
     </div>
   );
 }
+
 
 
 

@@ -8,6 +8,8 @@ type PlanSlot = {
   // canonical internal keys
   mainId: string | null;
   sideId: string | null;
+  suggestedSideId?: string | null;
+  manualSideName?: string | null;
 
   locked: boolean;
   cooked: boolean;
@@ -43,6 +45,8 @@ function coerceSlots(value: any, fallbackCount = 7): PlanSlot[] {
       slotId: `slot-${i}-${Date.now()}`,
       mainId: rid ?? null,
       sideId: null,
+      suggestedSideId: null,
+      manualSideName: null,
       locked: false,
       cooked: false,
       recipeId: rid ?? null,
@@ -68,6 +72,16 @@ function coerceSlots(value: any, fallbackCount = 7): PlanSlot[] {
         s.side_id != null ? String(s.side_id) :
         null;
 
+      const suggestedSideId =
+        s.suggestedSideId != null ? String(s.suggestedSideId) :
+        s.suggested_side_id != null ? String(s.suggested_side_id) :
+        null;
+
+      const manualSideName =
+        s.manualSideName != null ? String(s.manualSideName) :
+        s.manual_side_name != null ? String(s.manual_side_name) :
+        null;
+
       const locked = Boolean(s.locked);
       const cooked = Boolean(s.cooked);
 
@@ -76,6 +90,8 @@ function coerceSlots(value: any, fallbackCount = 7): PlanSlot[] {
         slotId,
         mainId,
         sideId,
+        suggestedSideId,
+        manualSideName,
         locked,
         cooked,
         recipeId: mainId,
@@ -89,6 +105,8 @@ function coerceSlots(value: any, fallbackCount = 7): PlanSlot[] {
     slotId: `slot-${i}-${Date.now()}`,
     mainId: null,
     sideId: null,
+    suggestedSideId: null,
+    manualSideName: null,
     locked: false,
     cooked: false,
     recipeId: null,
@@ -203,4 +221,6 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
 

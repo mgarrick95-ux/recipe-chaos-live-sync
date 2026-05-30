@@ -29,6 +29,8 @@ type SlotPlan = {
   slotId: string;
   mainId: string | null;
   sideId: string | null;
+  suggestedSideId: string | null;
+  manualSideName: string | null;
   locked: boolean;
   cooked: boolean;
 };
@@ -59,8 +61,23 @@ type StorageItem = {
 
 type Course = "main" | "side" | "breakfast" | "dessert" | "snack" | "unknown";
 
+type MealFamily =
+  | "unknown"
+  | "breakfast"
+  | "sandwich_burger"
+  | "mexican_handheld"
+  | "italian_pasta"
+  | "italian_main"
+  | "soup_stew_chili"
+  | "seafood_main"
+  | "comfort_main"
+  | "salad_main"
+  | "generic_main";
+
+
 type Profile = {
   course: Course;
+  family: MealFamily;
   cuisines: Set<string>;
   vibes: Set<string>;
   sweetness: number; // 0..1
@@ -157,6 +174,8 @@ function makeEmptySlots(count: number): SlotPlan[] {
     slotId: uid(),
     mainId: null,
     sideId: null,
+    suggestedSideId: null,
+    manualSideName: null,
     locked: false,
     cooked: false,
   }));
@@ -187,13 +206,24 @@ function readProfileCourseForUI(recipe: Recipe): { course: AICourse | null; sour
 
 // Effective course for behavior: user → ai → heuristic → null
 function effectiveCourseForPick(recipe: Recipe, fallbackHeuristic?: Course): AICourse | Course | null {
-  const raw =
-    (recipe as any)?.user_profile?.course ??
-    (recipe as any)?.ai_profile?.course ??
-    fallbackHeuristic ??
-    null;
+  const userCourse = (recipe as any)?.user_profile?.course;
+  if (typeof userCourse === "string") {
+    const clean = userCourse.toLowerCase().trim() as any;
+    if (clean && clean !== "unknown") return clean;
+  }
 
-  return typeof raw === "string" ? (raw.toLowerCase().trim() as any) : null;
+  const aiCourse = (recipe as any)?.ai_profile?.course;
+  if (typeof aiCourse === "string") {
+    const clean = aiCourse.toLowerCase().trim() as any;
+    if (clean && clean !== "unknown") return clean;
+  }
+
+  if (typeof fallbackHeuristic === "string") {
+    const clean = fallbackHeuristic.toLowerCase().trim() as any;
+    if (clean) return clean;
+  }
+
+  return null;
 }
 
 function isNonMealCourse(c: any) {
@@ -212,6 +242,7 @@ const KW = {
   dessert: [
     "cookie","cookies","cake","brownie","cupcake","muffin","pie","tart","ice cream","pudding","candy","fudge",
     "chocolate","cheesecake","frosting","icing","donut","doughnut","sweet",
+    "bar","bars","lemon bar","lemon bars",
   ],
   breakfast: [
     "waffle","waffles","pancake","pancakes","omelet","omelette","scramble","scrambled","french toast","granola",
@@ -222,13 +253,13 @@ const KW = {
     "sauteed","carrots","green beans","asparagus","broccoli","cucumber","coleslaw","cornbread","breadsticks","toast",
     "noodles","vegetables","veggies","beans",
   ],
-  snack: ["snack","appetizer","starter","bite","bites"],
+  snack: ["snack","appetizer","starter","bite","bites","fruit"],
   soup: ["soup","stew","chowder","bisque","ramen","pho","chili"],
-  sandwich: ["sandwich","panini","wrap","taco","quesadilla","burger","sub","grilled cheese"],
+  sandwich: ["sandwich","panini","wrap","burger","sub","grilled cheese"],
   pasta: ["pasta","spaghetti","lasagna","ravioli","alfredo","mac and cheese","macaroni"],
-  italian: ["italian","parmesan","marinara","bolognese","pesto","lasagna","risotto"],
+  italian: ["italian","parmesan","marinara","bolognese","pesto","lasagna","risotto","caesar","breadsticks","garlic bread","chicken parmesan","chicken parm"],
   mexican: ["taco","tacos","burrito","enchilada","quesadilla","salsa","guac","guacamole"],
-  asian: ["stir fry","stir-fry","teriyaki","soy","miso","ramen","curry","kimchi","sesame"],
+  asian: ["stir fry","stir-fry","teriyaki","soy","miso","ramen","curry","kimchi","sesame","spring roll","spring rolls","egg roll","egg rolls"],
   seafood: ["salmon","tuna","shrimp","cod","tilapia","crab","lobster"],
   grill: ["grilled","bbq","barbecue","smoked","char"],
   salad: ["salad","slaw"],
@@ -237,6 +268,8 @@ const KW = {
 const HARD_MAIN_SIGNALS = [
   "taco","tacos","burrito","enchilada","burger","sandwich","wrap","quesadilla","sub","panini","grilled cheese",
   "chili","stew","lasagna","spaghetti","pasta","meatloaf","casserole","fajita","fajitas",
+  "mac and cheese","mac n cheese","chicken parmesan","chicken parm","parmesan",
+  "bbq salad","barbecue salad","taco salad","cobb salad","chef salad",
 ];
 
 // "likely side" keywords (even if AI didn't label it side yet)
@@ -267,16 +300,19 @@ function profileRecipe(recipe: Recipe): Profile {
   const ing = safeStringArray(recipe.ingredients).map(normalizeName);
   const tagList = safeStringArray(recipe.tags).map(normalizeName);
 
-  const has = (list: string[]) =>
-    list.some((k) => title.includes(k) || ing.some((i) => i.includes(k)) || tagList.some((t) => t.includes(k)));
+  const hasTitle = (list: string[]) => list.some((k) => title.includes(k));
+  const hasTag = (list: string[]) => list.some((k) => tagList.some((t) => t.includes(k)));
+  const hasIngredient = (list: string[]) => list.some((k) => ing.some((i) => i.includes(k)));
 
   let course: Course = "unknown";
+  let family: MealFamily = "unknown";
   let confidence = 0.35;
 
-  const dessertHit = has(KW.dessert);
-  const breakfastHit = has(KW.breakfast);
-  const sideHit = has(KW.side);
-  const snackHit = has(KW.snack);
+  const dessertHit = hasTitle(KW.dessert) || hasTag(KW.dessert);
+  const breakfastHit = hasTitle(KW.breakfast) || hasTag(KW.breakfast);
+  const snackHit = hasTitle(KW.snack) || hasTag(KW.snack);
+  const sideHit = hasTitle(KW.side) || hasTag(KW.side);
+  const mainHit = HARD_MAIN_SIGNALS.some((k) => title.includes(k));
 
   const sweetIngSignals = ["sugar","brown sugar","honey","maple","vanilla","cocoa","chocolate"];
   const sweetHits = sweetIngSignals.reduce((a, k) => a + (ing.some((i) => i.includes(k)) ? 1 : 0), 0);
@@ -286,60 +322,90 @@ function profileRecipe(recipe: Recipe): Profile {
     confidence = 0.9;
   } else if (breakfastHit) {
     course = "breakfast";
-    confidence = 0.88;
+    family = "breakfast";
+    confidence = 0.9;
   } else if (snackHit) {
     course = "snack";
     confidence = 0.75;
+  } else if (mainHit) {
+    course = "main";
+    confidence = 0.92;
   } else if (sideHit) {
     course = "side";
-    confidence = 0.7;
+    confidence = 0.72;
   } else {
     course = "main";
-    confidence = 0.58;
+    confidence = 0.62;
+  }
+
+  if (course === "main" || course === "breakfast") {
+    if (breakfastHit || title.includes("pancake") || title.includes("waffle") || title.includes("eggs")) {
+      family = "breakfast";
+    } else if (title.includes("soup") || title.includes("stew") || title.includes("chowder") || title.includes("bisque") || title.includes("chili")) {
+      family = "soup_stew_chili";
+    } else if (title.includes("burger") || title.includes("sandwich") || title.includes("panini") || title.includes("sub") || title.includes("grilled cheese") || title.includes("wrap")) {
+      family = "sandwich_burger";
+    } else if (title.includes("taco") || title.includes("tacos") || title.includes("burrito") || title.includes("enchil") || title.includes("quesadilla") || title.includes("fajita")) {
+      family = "mexican_handheld";
+    } else if (title.includes("spaghetti") || title.includes("lasagna") || title.includes("ravioli") || title.includes("alfredo") || title.includes("mac and cheese") || title.includes("macaroni") || title.includes("pasta")) {
+      family = "italian_pasta";
+    } else if (title.includes("parmesan") || title.includes("marinara") || title.includes("bolognese") || title.includes("pesto") || title.includes("risotto")) {
+      family = "italian_main";
+    } else if (title.includes("salmon") || title.includes("tuna") || title.includes("shrimp") || title.includes("cod") || title.includes("tilapia") || title.includes("crab") || title.includes("lobster")) {
+      family = "seafood_main";
+    } else if (title.includes("salad")) {
+      family = "salad_main";
+    } else if (title.includes("meatloaf") || title.includes("casserole") || title.includes("cabbage roll") || title.includes("unstuffed cabbage")) {
+      family = "comfort_main";
+    } else {
+      family = "generic_main";
+    }
   }
 
   const cuisines = new Set<string>();
   const vibes = new Set<string>();
 
-  if (has(KW.italian)) cuisines.add("italian");
-  if (has(KW.mexican)) cuisines.add("mexican");
-  if (has(KW.asian)) cuisines.add("asian");
+  if (family === "italian_pasta" || family === "italian_main" || hasTitle(KW.italian) || hasTag(KW.italian)) cuisines.add("italian");
+  if (family === "mexican_handheld" || hasTitle(KW.mexican) || hasTag(KW.mexican)) cuisines.add("mexican");
+  if (hasTitle(KW.asian) || hasTag(KW.asian)) cuisines.add("asian");
 
-  if (has(KW.soup)) vibes.add("soup");
-  if (has(KW.sandwich)) vibes.add("sandwich");
-  if (has(KW.pasta)) vibes.add("pasta");
-  if (has(KW.salad)) vibes.add("salad");
-  if (has(KW.seafood)) vibes.add("seafood");
-  if (has(KW.grill)) vibes.add("grill");
+  if (family === "soup_stew_chili") vibes.add("soup");
+  if (family === "sandwich_burger" || family === "mexican_handheld") vibes.add("sandwich");
+  if (family === "italian_pasta") vibes.add("pasta");
+  if (family === "salad_main" || hasTitle(KW.salad)) vibes.add("salad");
+  if (family === "seafood_main" || hasTitle(KW.seafood)) vibes.add("seafood");
+  if (hasTitle(KW.grill) || hasTag(KW.grill)) vibes.add("grill");
 
   const heavySignals = ["cream","cheese","butter","bacon","fried","lasagna","alfredo","casserole","chili"];
   const lightSignals = ["salad","cucumber","vinaigrette","broccoli","steam","grilled","lemon","herb"];
 
-  const heavy = heavySignals.reduce((a, k) => a + (title.includes(k) || ing.some((i) => i.includes(k)) ? 1 : 0), 0);
-  const light = lightSignals.reduce((a, k) => a + (title.includes(k) || ing.some((i) => i.includes(k)) ? 1 : 0), 0);
+  const heavy = heavySignals.reduce((a, k) => a + ((title.includes(k) || hasIngredient([k])) ? 1 : 0), 0);
+  const light = lightSignals.reduce((a, k) => a + ((title.includes(k) || hasIngredient([k])) ? 1 : 0), 0);
 
   const heaviness = Math.max(0, Math.min(1, (heavy - light + 2) / 6));
   const sweetness = Math.max(0, Math.min(1, (sweetHits + (dessertHit ? 2 : 0)) / 5));
 
-  const shortBad = toks.size <= 2 && !dessertHit && !breakfastHit && !sideHit;
-  if (shortBad) confidence = Math.min(confidence, 0.48);
+  const shortBad = toks.size <= 2 && !dessertHit && !breakfastHit && !sideHit && !mainHit;
+  if (shortBad && family === "generic_main") confidence = Math.min(confidence, 0.48);
 
-  // guardrails
   if (title.includes("fries")) {
     course = "side";
+    family = "unknown";
     confidence = 0.95;
     vibes.add("fried");
   }
   if (title.includes("cookie")) {
     course = "dessert";
+    family = "unknown";
     confidence = 0.95;
   }
   if (title.includes("pancake") || title.includes("waffle")) {
     course = "breakfast";
+    family = "breakfast";
     confidence = Math.max(confidence, 0.9);
   }
 
-  return { course, cuisines, vibes, sweetness, heaviness, confidence };
+  return { course, family, cuisines, vibes, sweetness, heaviness, confidence };
 }
 
 function intersects(a: Set<string>, b: Set<string>) {
@@ -355,30 +421,73 @@ function scoreSideForMain(main: Profile, side: Profile, alreadyUsedSideIds: Set<
 
   if (alreadyUsedSideIds.has(sideId)) score -= 2.0;
 
-  if (main.cuisines.size > 0 && intersects(main.cuisines, side.cuisines)) score += 1.2;
-  if (main.cuisines.size > 0 && side.cuisines.size === 0) score += 0.25;
-
   const mainIsSalady = main.vibes.has("salad");
   const sideIsSalady = side.vibes.has("salad");
+
+  switch (main.family) {
+    case "italian_pasta":
+    case "italian_main":
+      if (side.cuisines.has("italian")) score += 1.6;
+      if (sideIsSalady) score += 1.15;
+      if (side.heaviness <= 0.45) score += 0.45;
+      if (side.heaviness >= 0.7) score -= 0.9;
+      break;
+
+    case "mexican_handheld":
+      if (side.cuisines.has("mexican")) score += 1.7;
+      if (side.heaviness <= 0.55) score += 0.35;
+      if (side.cuisines.has("asian") || side.cuisines.has("italian")) score -= 1.4;
+      break;
+
+    case "sandwich_burger":
+      if (side.vibes.has("fried")) score += 1.2;
+      if (sideIsSalady) score += 0.25;
+      if (side.cuisines.has("asian")) score -= 1.35;
+      break;
+
+    case "soup_stew_chili":
+      if (side.vibes.has("salad")) score += 0.75;
+      if (side.cuisines.size === 0) score += 0.25;
+      if (side.heaviness >= 0.7) score -= 0.45;
+      break;
+
+    case "comfort_main":
+      if (sideIsSalady) score += 0.95;
+      if (side.heaviness <= 0.5) score += 0.35;
+      break;
+
+    case "seafood_main":
+      if (side.heaviness <= 0.45) score += 0.55;
+      if (sideIsSalady) score += 0.45;
+      break;
+
+    case "salad_main":
+      if (sideIsSalady) score -= 1.2;
+      if (side.heaviness <= 0.45) score += 0.2;
+      break;
+
+    case "breakfast":
+      if (sideIsSalady) score -= 0.9;
+      if (side.vibes.has("fried")) score += 0.15;
+      if (side.heaviness >= 0.7) score -= 1.1;
+      break;
+
+    default:
+      if (main.heaviness >= 0.6) {
+        if (sideIsSalady) score += 0.75;
+        if (side.heaviness <= 0.4) score += 0.4;
+        if (side.heaviness >= 0.65) score -= 0.8;
+      }
+      break;
+  }
+
+  if (main.cuisines.size > 0 && intersects(main.cuisines, side.cuisines)) score += 0.8;
+  if (main.cuisines.size > 0 && side.cuisines.size === 0) score += 0.1;
+  if (main.cuisines.size > 0 && side.cuisines.size > 0 && !intersects(main.cuisines, side.cuisines)) score -= 0.9;
+
   if (mainIsSalady && sideIsSalady) score -= 1.25;
-
-  if (main.vibes.has("soup") && (side.vibes.has("sandwich") || side.vibes.has("salad"))) score += 1.0;
-
-  if (main.vibes.has("pasta") || main.heaviness >= 0.6) {
-    if (sideIsSalady) score += 0.95;
-    if (side.heaviness <= 0.4) score += 0.55;
-    if (side.heaviness >= 0.65) score -= 0.9;
-  }
-
-  if (main.course === "breakfast") {
-    // breakfast sides should be light/simple
-    if (sideIsSalady) score -= 0.9;
-    if (side.vibes.has("fried")) score += 0.15;
-    if (side.heaviness >= 0.7) score -= 1.1;
-  }
-
-  score += intersects(main.vibes, side.vibes) ? 0.1 : 0.35;
-  score += (side.confidence - 0.5) * 0.6;
+  score += intersects(main.vibes, side.vibes) ? 0.2 : 0;
+  score += (side.confidence - 0.5) * 0.5;
 
   return score;
 }
@@ -394,7 +503,12 @@ function isLikelySideTitle(recipe: Recipe) {
   if (NOT_SIDE_KEYWORDS.some((k) => title.includes(k))) return false;
   if (HARD_MAIN_SIGNALS.some((k) => title.includes(k))) return false;
 
-  return LIKELY_SIDE_KEYWORDS.some((k) => title.includes(k));
+  const strongSideKeywords = [
+    "salad","slaw","fries","chips","pilaf","mashed","potatoes","roasted","steamed","sauteed",
+    "green beans","asparagus","broccoli","coleslaw","cornbread","breadsticks","garlic bread","rolls","toast",
+  ];
+
+  return strongSideKeywords.some((k) => title.includes(k));
 }
 
 function isBreakfastFriendlySideTitle(recipe: Recipe) {
@@ -409,44 +523,42 @@ function isBreakfastFriendlySideTitle(recipe: Recipe) {
 ========================= */
 
 function suggestNonRecipeSide(main: Recipe, mainP: Profile): string | null {
-  const title = normalizeName(main.title || "");
-  const courseInfo = readProfileCourseForUI(main);
-  const aiCourse = courseInfo.course;
+  const eff = effectiveCourseForPick(main, mainP.course);
 
-  if (aiCourse && isNonMealCourse(aiCourse)) return null;
+  if (eff && isNonMealCourse(eff)) return null;
+  if (eff === "unknown") return null;
+  if (mainP.course === "unknown") return null;
 
-  // breakfast-ish
-  if (mainP.course === "breakfast" || title.includes("waffle") || title.includes("pancake") || title.includes("eggs")) {
-    return "Fruit, yogurt, or toast";
+  switch (mainP.family) {
+    case "breakfast":
+      return "Fruit";
+
+    case "soup_stew_chili":
+      return "Bread";
+
+    case "italian_pasta":
+    case "italian_main":
+      return "Garlic bread";
+
+    case "sandwich_burger":
+      return "Chips";
+
+    case "mexican_handheld":
+      return "Rice";
+
+    case "seafood_main":
+      return "Salad";
+
+    case "comfort_main":
+      return "Salad";
+
+    case "salad_main":
+      return null;
+
+    default:
+      if (mainP.heaviness >= 0.65) return "Salad";
+      return "Salad";
   }
-
-  // soups/stews/chili
-  if (mainP.vibes.has("soup") || title.includes("stew") || title.includes("chili")) return "Bread or a simple side salad";
-
-  // pasta
-  if (mainP.vibes.has("pasta") || title.includes("spaghetti") || title.includes("lasagna")) {
-    return "Garlic bread + simple salad";
-  }
-
-  // sandwich/burger
-  if (mainP.vibes.has("sandwich") || title.includes("burger") || title.includes("sandwich") || title.includes("wrap")) {
-    return "Chips, fries, or a side salad";
-  }
-
-  // mexican-ish
-  if (mainP.cuisines.has("mexican") || title.includes("taco") || title.includes("burrito") || title.includes("enchil")) {
-    return "Rice + beans";
-  }
-
-  // asian-ish
-  if (mainP.cuisines.has("asian") || title.includes("teriyaki") || title.includes("stir fry") || title.includes("ramen")) {
-    return "Steamed rice + quick veg";
-  }
-
-  // heavy mains
-  if (mainP.heaviness >= 0.65) return "A simple salad or steamed veg";
-
-  return "Rice, noodles, or a simple salad";
 }
 
 /* =========================
@@ -497,6 +609,11 @@ function buildNeededIngredients(recipesById: Map<string, Recipe>, plan: SlotPlan
         counts.set(key, (counts.get(key) || 0) + 1);
       }
     }
+
+    if (slot.manualSideName) {
+      const key = normalizeName(slot.manualSideName);
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    }
   }
 
   return counts;
@@ -515,6 +632,25 @@ function matchStorageToIngredient(storage: StorageItem[], ingKey: string) {
    Component
 ========================= */
 
+function scoreRecipePantryFit(recipe: Recipe, storage: StorageItem[]) {
+  const ingredients = extractIngredientNames(recipe);
+  if (ingredients.length === 0) return 0;
+
+  let matched = 0;
+  let missing = 0;
+
+  for (const ing of ingredients) {
+    const match = matchStorageToIngredient(storage, ing);
+    const qty = match ? coerceNumber(match.quantity, 0) : 0;
+
+    if (match && qty > 0) matched += 1;
+    else missing += 1;
+  }
+
+  const matchRatio = matched / ingredients.length;
+
+  return Math.round(matchRatio * 120) + matched * 10 - missing * 6;
+}
 export default function MealPlanningClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -566,6 +702,13 @@ export default function MealPlanningClient() {
   const [saving, setSaving] = useState<boolean>(false);
 
   const [showTopDetails, setShowTopDetails] = useState<boolean>(false);
+  const shoppingAddSignatureKey = `recipechaos:meal-planning:${weekStartStr}:last-shopping-add-signature`;
+  const [lastShoppingAddSignature, setLastShoppingAddSignature] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setLastShoppingAddSignature(window.sessionStorage.getItem(shoppingAddSignatureKey) || "");
+  }, [shoppingAddSignatureKey]);
 
   const recipesById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
 
@@ -646,6 +789,8 @@ export default function MealPlanningClient() {
           slotId: String(x.slotId ?? uid()),
           mainId: x.mainId ?? x.recipeId ?? null,
           sideId: x.sideId ?? x.sideRecipeId ?? null,
+          suggestedSideId: x.suggestedSideId ?? x.suggested_side_id ?? null,
+          manualSideName: x.manualSideName ?? x.manual_side_name ?? null,
           locked: Boolean(x.locked),
           cooked: Boolean(x.cooked),
         }));
@@ -687,6 +832,8 @@ export default function MealPlanningClient() {
           slotId: s.slotId,
           mainId: s.mainId,
           sideId: s.sideId,
+          suggestedSideId: s.suggestedSideId,
+          manualSideName: s.manualSideName,
           recipeId: s.mainId,
           sideRecipeId: s.sideId,
           locked: s.locked,
@@ -845,6 +992,8 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
 
     score += Math.round((p.confidence || 0) * 10);
 
+    score += scoreRecipePantryFit(r, storageItems);
+
     if (eff === "breakfast") score -= 15;
 
     return score;
@@ -864,7 +1013,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
     const mainEff = effectiveCourseForPick(mainR, mainP.course);
     const wantsBreakfastSide = mainEff === "breakfast" || mainP.course === "breakfast";
 
-    let best: { id: string; score: number } | null = null;
+    const scored: { id: string; score: number }[] = [];
 
     for (const sid of sideCandidates) {
       const sideR = recipesById.get(sid);
@@ -873,33 +1022,61 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
 
       const sideTitle = normalizeName(sideR.title || "");
 
-      // hard block again (defense-in-depth)
+      const familyAllowed = (() => {
+        switch (mainP.family) {
+          case "italian_pasta":
+          case "italian_main":
+            return sideP0.cuisines.has("italian") || sideTitle.includes("salad") || sideTitle.includes("bread") || sideTitle.includes("roll");
+
+          case "mexican_handheld":
+            return sideP0.cuisines.has("mexican") || sideTitle.includes("rice") || sideTitle.includes("beans") || sideTitle.includes("corn") || sideTitle.includes("salad");
+
+          case "sandwich_burger":
+            return sideTitle.includes("fries") || sideTitle.includes("chips") || sideTitle.includes("slaw") || sideTitle.includes("salad") || sideTitle.includes("soup");
+
+          case "soup_stew_chili":
+            return sideTitle.includes("bread") || sideTitle.includes("cornbread") || sideTitle.includes("salad");
+
+          case "comfort_main":
+            return sideTitle.includes("salad") || sideTitle.includes("green beans") || sideTitle.includes("broccoli") || sideTitle.includes("asparagus") || sideTitle.includes("mashed");
+
+          case "seafood_main":
+            return sideTitle.includes("salad") || sideTitle.includes("rice") || sideTitle.includes("broccoli") || sideTitle.includes("asparagus") || sideTitle.includes("green beans");
+
+          default:
+            return true;
+        }
+      })();
+
+      if (!familyAllowed) continue;
+
       if (NOT_SIDE_KEYWORDS.some((k) => sideTitle.includes(k))) continue;
-
-      // breakfast filter
-      if (wantsBreakfastSide && !isBreakfastFriendlySideTitle(sideR)) {
-        continue;
-      }
-
-      // never suggest a side-like *main* as a side if it has main signals (extra safety)
+      if (wantsBreakfastSide && !isBreakfastFriendlySideTitle(sideR)) continue;
       if (HARD_MAIN_SIGNALS.some((k) => sideTitle.includes(k))) continue;
 
       const sideP: Profile = { ...sideP0, course: "side" };
       let sc = scoreSideForMain(mainP, sideP, usedSideIds, sid);
 
-      // breakfast: prefer lighter / breakfast-y
       if (wantsBreakfastSide) {
         sc += isBreakfastFriendlySideTitle(sideR) ? 0.35 : -1.0;
         if (sideTitle.includes("salad")) sc -= 1.0;
       }
 
-      if (best == null || sc > best.score) best = { id: sid, score: sc };
+      scored.push({ id: sid, score: sc });
     }
 
-    if (!best) return null;
-    if (best.score < 0.35) return null; // stricter threshold to avoid "random" sides
+    if (scored.length === 0) return null;
 
-    return best.id;
+    scored.sort((a, b) => b.score - a.score);
+
+    const bestScore = scored[0].score;
+    if (bestScore < 1.05) return null;
+
+    const topBand = scored.filter((x) => x.score >= bestScore - 0.15).slice(0, 2);
+    const pool = topBand.length > 0 ? topBand : [scored[0]];
+    const pick = pool[0];
+
+    return pick?.id ?? null;
   }
 
   function recomputeSides(nextSlots: SlotPlan[]) {
@@ -916,7 +1093,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
       const mainEff = mainR && mainP ? effectiveCourseForPick(mainR, mainP.course) : null;
       const wantsBreakfastSide = mainEff === "breakfast" || mainP?.course === "breakfast";
 
-      // keep side only if it is still allowed + still sane for breakfast
+      // keep committed side only if it is still allowed + still sane for breakfast
       if (s.sideId && allowedSideSet.has(s.sideId)) {
         const sideR = recipesById.get(s.sideId);
         const sideTitle = sideR ? normalizeName(sideR.title || "") : "";
@@ -930,14 +1107,14 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
 
         if (!hardBad && !breakfastBad) {
           used.add(s.sideId);
-          return s;
+          return { ...s, suggestedSideId: null };
         }
       }
 
       const picked = pickSideForMain(s.mainId, used);
       if (picked) used.add(picked);
 
-      return { ...s, sideId: picked ?? null };
+      return { ...s, sideId: null, suggestedSideId: picked ?? null };
     });
 
     return updated;
@@ -951,7 +1128,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
 
     const next = slots.map((s) => {
       if (s.locked) return s;
-      return { ...s, mainId: null, sideId: null, cooked: false };
+      return { ...s, mainId: null, sideId: null, suggestedSideId: null, cooked: false };
     });
 
     let idx = 0;
@@ -981,7 +1158,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
 
     const next = slots.map((s) => {
       if (s.locked) return s;
-      return { ...s, mainId: null, sideId: null, cooked: false };
+      return { ...s, mainId: null, sideId: null, suggestedSideId: null, cooked: false };
     });
 
     let idx = 0;
@@ -1003,24 +1180,24 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
     const allowedSideSet = new Set(sideCandidates);
 
     const next = (() => {
-      const used = new Set<string>(slots.map((s) => s.sideId).filter(Boolean) as string[]);
+      const used = new Set<string>(slots.map((s) => s.sideId || s.suggestedSideId).filter(Boolean) as string[]);
 
       return slots.map((s) => {
         if (s.slotId !== slotId) return s;
         if (!s.mainId) return s;
 
-        if (!isValidMainForSides(s.mainId)) return { ...s, sideId: null };
+        if (!isValidMainForSides(s.mainId)) return { ...s, sideId: null, suggestedSideId: null };
 
         const mainR = recipesById.get(s.mainId);
         const mainP = profilesById.get(s.mainId);
         const mainEff = mainR && mainP ? effectiveCourseForPick(mainR, mainP.course) : null;
         const wantsBreakfastSide = mainEff === "breakfast" || mainP?.course === "breakfast";
 
-        if (s.sideId) used.delete(s.sideId);
+        if (s.suggestedSideId) used.delete(s.suggestedSideId);
 
         let best: { id: string; score: number } | null = null;
         for (const sid of sideCandidates) {
-          if (sid === s.sideId) continue;
+          if (sid === s.suggestedSideId) continue;
           if (!allowedSideSet.has(sid)) continue;
 
           const sideR = recipesById.get(sid);
@@ -1048,7 +1225,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
         const nextSide = best && best.score >= 0.35 ? best.id : null;
         if (nextSide) used.add(nextSide);
 
-        return { ...s, sideId: nextSide };
+        return { ...s, suggestedSideId: nextSide };
       });
     })();
 
@@ -1056,6 +1233,42 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
     await savePlan(next);
   }
 
+
+  async function acceptSuggestedSide(slotId: string) {
+    const next = slots.map((s) => {
+      if (s.slotId !== slotId) return s;
+      if (!s.mainId || !s.suggestedSideId) return s;
+      return { ...s, sideId: s.suggestedSideId, suggestedSideId: null, manualSideName: null };
+    });
+
+    setSlots(next);
+    await savePlan(next);
+  }
+
+  async function acceptNonRecipeSide(slotId: string, sideName: string) {
+    const clean = sideName.trim();
+    if (!clean) return;
+
+    const next = slots.map((s) => {
+      if (s.slotId !== slotId) return s;
+      if (!s.mainId) return s;
+      return { ...s, sideId: null, suggestedSideId: null, manualSideName: clean };
+    });
+
+    setSlots(next);
+    await savePlan(next);
+  }
+
+  async function removeCommittedSide(slotId: string) {
+    const next = slots.map((s) => {
+      if (s.slotId !== slotId) return s;
+      return { ...s, sideId: null, manualSideName: null };
+    });
+
+    const withSides = recomputeSides(next);
+    setSlots(withSides);
+    await savePlan(withSides);
+  }
   /* =========================
      Pantry projection + shopping list build
 ========================= */
@@ -1095,11 +1308,24 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
       return;
     }
 
+    const signature = JSON.stringify(
+      miss
+        .slice(0, 60)
+        .map((m) => `${m.key}:${Math.max(1, m.needed - m.have)}`)
+        .sort()
+    );
+
+    if (signature === lastShoppingAddSignature) {
+      setStatus("Already added");
+      setTimeout(() => setStatus(""), 1200);
+      return;
+    }
+
     setStatus("Adding...");
     try {
       for (const m of miss.slice(0, 60)) {
         const qty = Math.max(1, m.needed - m.have);
-        const name = m.matchedName || m.display;
+        const name = m.display;
 
         await fetch("/api/shopping-list/items", {
           method: "POST",
@@ -1108,6 +1334,8 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
         });
       }
 
+      setLastShoppingAddSignature(signature);
+      window.sessionStorage.setItem(shoppingAddSignatureKey, signature);
       setStatus("Shopping list updated");
       setTimeout(() => setStatus(""), 1200);
     } catch (e: any) {
@@ -1119,52 +1347,22 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
     const slot = slots.find((s) => s.slotId === slotId);
     if (!slot || !slot.mainId) return;
 
-    const ids = [slot.mainId, slot.sideId].filter(Boolean) as string[];
-    const storage = storageItems || [];
-
-    const ingredientKeys: string[] = [];
-    for (const id of ids) {
-      const r = recipesById.get(id);
-      if (!r) continue;
-      ingredientKeys.push(...extractIngredientNames(r).map(normalizeName));
-    }
-
-    try {
-      for (const key of ingredientKeys) {
-        const match = matchStorageToIngredient(storage, key);
-        if (!match) continue;
-
-        const have = coerceNumber(match.quantity, 0);
-        const nextQty = Math.max(0, have - 1);
-        if (nextQty === have) continue;
-
-        await fetch(`/api/storage-items/${match.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quantity: nextQty }),
-        });
-      }
-    } catch {
-      // don't block cooked if pantry update fails
-    }
-
     const next = slots.map((s) => (s.slotId === slotId ? { ...s, cooked: true } : s));
     setSlots(next);
     await savePlan(next);
-    await loadStorage();
   }
 
   /* =========================
      UI
 ========================= */
 
-  const box = "rounded-3xl bg-white/5 ring-1 ring-white/10";
+  const box = "rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)]";
   const pill =
-    "rounded-full bg-white/8 hover:bg-white/12 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition";
+    "rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-4 py-2 text-xs font-semibold ring-1 ring-[color:var(--border)] transition";
   const pillActive =
-    "rounded-full bg-emerald-400/25 hover:bg-emerald-400/30 px-4 py-2 text-xs font-extrabold ring-1 ring-white/10 transition";
+    "rounded-full bg-emerald-400/25 hover:bg-emerald-400/30 px-4 py-2 text-xs font-extrabold ring-1 ring-[color:var(--border)] transition";
   const tinyBtn =
-    "rounded-full bg-white/8 hover:bg-white/12 px-3 py-1.5 text-xs font-semibold ring-1 ring-white/10 transition";
+    "rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-3 py-1.5 text-xs font-semibold ring-1 ring-[color:var(--border)] transition";
 
   const header = (
     <div className="mt-2">
@@ -1181,7 +1379,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
           <button
             type="button"
             onClick={() => goToWeek(addDays(weekStart, -7))}
-            className="rounded-full bg-white/6 hover:bg-white/10 px-4 py-2 text-sm font-semibold ring-1 ring-white/10 transition"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--card)] px-4 py-2 text-sm font-semibold ring-1 ring-[color:var(--border)] transition"
             title="Previous week"
           >
             ←
@@ -1190,7 +1388,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
           <button
             type="button"
             onClick={() => goToWeek(addDays(weekStart, +7))}
-            className="rounded-full bg-white/6 hover:bg-white/10 px-4 py-2 text-sm font-semibold ring-1 ring-white/10 transition"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--card)] px-4 py-2 text-sm font-semibold ring-1 ring-[color:var(--border)] transition"
             title="Next week"
           >
             →
@@ -1200,7 +1398,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
             type="button"
             onClick={doItForMe}
             disabled={loadingRecipes || recipes.length === 0 || saving || planBusy}
-            className="rounded-full bg-emerald-400/80 hover:bg-emerald-400 px-5 py-3 text-sm font-extrabold text-black disabled:opacity-50 ring-1 ring-white/10 transition shadow-lg shadow-emerald-400/10"
+            className="rounded-full bg-emerald-400/80 hover:bg-emerald-400 px-5 py-3 text-sm font-extrabold text-black disabled:opacity-50 ring-1 ring-[color:var(--border)] transition shadow-lg shadow-emerald-400/10"
           >
             {saving || planBusy ? "Working..." : "Do it for me"}
           </button>
@@ -1209,7 +1407,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
             type="button"
             onClick={regenerateUnlocked}
             disabled={loadingRecipes || recipes.length === 0 || saving || planBusy}
-            className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] transition disabled:opacity-50"
             title="Keep locked meals; regenerate the rest"
           >
             Regenerate (unlocked)
@@ -1223,7 +1421,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
               await savePlan(next);
             }}
             disabled={saving || planBusy}
-            className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] transition disabled:opacity-50"
             title="Clear the whole plan"
           >
             Clear plan
@@ -1237,7 +1435,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
               await savePlan(next);
             }}
             disabled={saving || planBusy}
-            className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] transition disabled:opacity-50"
             title="Re-pick sides for current mains"
           >
             Re-pick sides
@@ -1247,7 +1445,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
             type="button"
             onClick={addMissingToShoppingList}
             disabled={loadingStorage || pantryProjection.missing.length === 0}
-            className="rounded-full bg-white/10 hover:bg-white/15 px-5 py-3 text-sm font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-5 py-3 text-sm font-semibold ring-1 ring-[color:var(--border)] transition disabled:opacity-50"
             title="Add missing ingredients to shopping list"
           >
             Add → Shopping list
@@ -1256,7 +1454,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
           <button
             type="button"
             onClick={() => setShowTopDetails((v) => !v)}
-            className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-sm font-semibold ring-1 ring-white/10 transition"
+            className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-4 py-2 text-sm font-semibold ring-1 ring-[color:var(--border)] transition"
             title="Show/hide pantry + notes"
           >
             {showTopDetails ? "Hide details" : "Show details"}
@@ -1266,11 +1464,11 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
 
       {showTopDetails ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <div className={[box, "p-5 text-white"].join(" ")}>
+          <div className={[box, "p-5 text-[color:var(--text)]"].join(" ")}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-lg font-extrabold tracking-tight">Pantry projection</div>
-                <div className="mt-1 text-sm text-white/60">
+                <div className="mt-1 text-sm text-[color:var(--muted)]">
                   Based on your plan (mains + sides). Approximate, but helpful.
                 </div>
               </div>
@@ -1294,21 +1492,21 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
                     {pantryProjection.missing.slice(0, 8).map((m) => (
                       <div key={m.key} className="flex items-center justify-between gap-3 text-sm">
                         <div className="min-w-0">
-                          <div className="font-semibold text-white/85 truncate">{m.matchedName || m.display}</div>
-                          <div className="text-xs text-white/55">
+                          <div className="font-semibold text-[color:var(--text)] truncate">{m.matchedName || m.display}</div>
+                          <div className="text-xs text-[color:var(--muted)]">
                             need {m.needed}  -  have {m.have}
                           </div>
                         </div>
-                        <div className="text-xs text-white/55 shrink-0">+{Math.max(1, m.needed - m.have)}</div>
+                        <div className="text-xs text-[color:var(--muted)] shrink-0">+{Math.max(1, m.needed - m.have)}</div>
                       </div>
                     ))}
 
                     {pantryProjection.missing.length > 8 ? (
-                      <div className="text-xs text-white/45 mt-2">...and {pantryProjection.missing.length - 8} more</div>
+                      <div className="text-xs text-[color:var(--muted-2)] mt-2">...and {pantryProjection.missing.length - 8} more</div>
                     ) : null}
                   </div>
                 ) : (
-                  <div className="mt-4 text-sm text-white/70">
+                  <div className="mt-4 text-sm text-[color:var(--text-soft)]">
                     No obvious gaps. (Either you're stocked, or the pantry isn't fully tracked yet.)
                   </div>
                 )}
@@ -1316,9 +1514,9 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
             )}
           </div>
 
-          <div className={[box, "p-5 text-white"].join(" ")}>
+          <div className={[box, "p-5 text-[color:var(--text)]"].join(" ")}>
             <div className="text-lg font-extrabold tracking-tight">Side rules (smarter)</div>
-            <div className="mt-2 text-sm text-white/65 space-y-2">
+            <div className="mt-2 text-sm text-[color:var(--muted)] space-y-2">
               <div> -  Butter/sauce/dressing/marinade/etc are hard-blocked as sides.</div>
               <div> -  Breakfast mains only accept breakfast-ish sides (fruit/yogurt/toast/etc).</div>
               <div> -  Side-like "mains" (baked potato, etc) won't get a "side of a side".</div>
@@ -1326,9 +1524,9 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
             </div>
           </div>
 
-          <div className={[box, "p-5 text-white"].join(" ")}>
+          <div className={[box, "p-5 text-[color:var(--text)]"].join(" ")}>
             <div className="text-lg font-extrabold tracking-tight">Tip</div>
-            <div className="mt-2 text-sm text-white/65">
+            <div className="mt-2 text-sm text-[color:var(--muted)]">
               Lock the meals you want, then spam "Regenerate (unlocked)" until the chaos behaves.
             </div>
           </div>
@@ -1341,51 +1539,55 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
     <RcPageShell header={header}>
       <div className="mt-8">
         {loadingRecipes ? (
-          <div className="text-white/70">Loading...</div>
+          <div className="text-[color:var(--text-soft)]">Loading...</div>
         ) : recipesError ? (
           <div className="text-red-400">{recipesError}</div>
         ) : (
           <div className="grid gap-4">
             {slots.map((slot, idx) => {
               const main = slot.mainId ? recipesById.get(slot.mainId) : null;
-              const side = slot.sideId ? recipesById.get(slot.sideId) : null;
+              const committedSide = slot.sideId ? recipesById.get(slot.sideId) : null;
+              const suggestedSide = slot.suggestedSideId ? recipesById.get(slot.suggestedSideId) : null;
+              const side = committedSide ?? suggestedSide ?? null;
 
               const mainP = slot.mainId ? profilesById.get(slot.mainId) : null;
 
+              const effectiveMainCourse = main ? effectiveCourseForPick(main, mainP?.course) : null;
+
               const uncertainMain =
                 !!mainP &&
-                (mainP.course === "unknown" ||
+                (effectiveMainCourse === "unknown" ||
                   (mainP.confidence < 0.5 && titleTokens(main ?? { id: "", title: "" }).size <= 2));
 
               const nonRecipeSuggestion =
-                main && mainP && !slot.sideId && isValidMainForSides(main.id)
+                main && mainP && !slot.sideId && !slot.suggestedSideId && isValidMainForSides(main.id)
                   ? suggestNonRecipeSide(main, mainP)
                   : null;
 
               return (
-                <div key={slot.slotId} className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
+                <div key={slot.slotId} className="rounded-3xl bg-[color:var(--card)] p-5 ring-1 ring-[color:var(--border)]">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="font-extrabold text-white">Meal {idx + 1}</div>
+                      <div className="font-extrabold text-[color:var(--text)]">Meal {idx + 1}</div>
 
                       {slot.locked ? (
-                        <span className="rounded-full bg-emerald-400/25 px-3 py-1 text-xs font-extrabold text-white ring-1 ring-white/10">
+                        <span className="rounded-full bg-emerald-400/25 px-3 py-1 text-xs font-extrabold text-[color:var(--text)] ring-1 ring-[color:var(--border)]">
                           Locked
                         </span>
                       ) : (
-                        <span className="rounded-full bg-white/8 px-3 py-1 text-xs font-semibold text-white/75 ring-1 ring-white/10">
+                        <span className="rounded-full bg-[color:var(--card)] px-3 py-1 text-xs font-semibold text-[color:var(--text-soft)] ring-1 ring-[color:var(--border)]">
                           Unlocked
                         </span>
                       )}
 
                       {slot.cooked ? (
-                        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/80 ring-1 ring-white/10">
+                        <span className="rounded-full bg-[color:var(--card)] px-3 py-1 text-xs font-semibold text-[color:var(--text-soft)] ring-1 ring-[color:var(--border)]">
                           Cooked
                         </span>
                       ) : null}
 
                       {uncertainMain ? (
-                        <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-extrabold text-white ring-1 ring-white/10">
+                        <span className="rounded-full bg-amber-400/20 px-3 py-1 text-xs font-extrabold text-[color:var(--text)] ring-1 ring-[color:var(--border)]">
                           Not sure what this is yet
                         </span>
                       ) : null}
@@ -1399,7 +1601,7 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
                           setSlots(next);
                           await savePlan(next);
                         }}
-                        className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition"
+                        className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-4 py-2 text-xs font-semibold ring-1 ring-[color:var(--border)] transition"
                       >
                         {slot.locked ? "Unlock" : "Lock"}
                       </button>
@@ -1408,30 +1610,52 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
                         type="button"
                         onClick={() => swapSide(slot.slotId)}
                         disabled={!slot.mainId}
-                        className="rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-xs font-semibold ring-1 ring-white/10 transition disabled:opacity-50"
+                        className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-4 py-2 text-xs font-semibold ring-1 ring-[color:var(--border)] transition disabled:opacity-50"
                         title="Swap the side suggestion"
                       >
                         Swap side
                       </button>
 
+                      {suggestedSide && !committedSide ? (
+                        <button
+                          type="button"
+                          onClick={() => acceptSuggestedSide(slot.slotId)}
+                          className="rounded-full bg-emerald-400/20 hover:bg-emerald-400/25 px-4 py-2 text-xs font-extrabold ring-1 ring-[color:var(--border)] transition"
+                          title="Accept this side suggestion"
+                        >
+                          Accept side
+                        </button>
+                      ) : null}
+
+                      {committedSide || slot.manualSideName ? (
+                        <button
+                          type="button"
+                          onClick={() => removeCommittedSide(slot.slotId)}
+                          className="rounded-full bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-4 py-2 text-xs font-semibold ring-1 ring-[color:var(--border)] transition"
+                          title="Remove the committed side"
+                        >
+                          Remove side
+                        </button>
+                      ) : null}
+
                       <button
                         type="button"
                         onClick={() => markCooked(slot.slotId)}
                         disabled={!slot.mainId || slot.cooked}
-                        className="rounded-full bg-emerald-400/20 hover:bg-emerald-400/25 px-4 py-2 text-xs font-extrabold ring-1 ring-white/10 transition disabled:opacity-50"
-                        title="Mark cooked (and try to decrement pantry)"
+                        className="rounded-full bg-emerald-400/20 hover:bg-emerald-400/25 px-4 py-2 text-xs font-extrabold ring-1 ring-[color:var(--border)] transition disabled:opacity-50"
+                        title="Mark this meal as cooked"
                       >
                         {slot.cooked ? "Cooked" : "Mark cooked"}
                       </button>
 
                       {main ? (
-                        <Link href={`/recipes/${main.id}`} className="text-xs underline text-white/80">
+                        <Link href={`/recipes/${main.id}`} className="text-xs underline text-[color:var(--text-soft)]">
                           View main
                         </Link>
                       ) : null}
 
-                      {side ? (
-                        <Link href={`/recipes/${side.id}`} className="text-xs underline text-white/65">
+                      {committedSide ? (
+                        <Link href={`/recipes/${committedSide.id}`} className="text-xs underline text-[color:var(--muted)]">
                           View side
                         </Link>
                       ) : null}
@@ -1443,14 +1667,16 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
                     onChange={async (e) => {
                       const value = e.target.value || null;
                       const next = slots.map((s) =>
-                        s.slotId === slot.slotId ? { ...s, mainId: value, cooked: false, sideId: null } : s
+                        s.slotId === slot.slotId
+                          ? { ...s, mainId: value, cooked: false, sideId: null, suggestedSideId: null, manualSideName: null }
+                          : s
                       );
 
                       const withSides = recomputeSides(next);
                       setSlots(withSides);
                       await savePlan(withSides);
                     }}
-                    className="mt-3 w-full rounded-2xl bg-black/20 p-3 text-white ring-1 ring-white/10"
+                    className="mt-3 w-full rounded-2xl bg-[color:var(--card)] p-3 text-[color:var(--text)] ring-1 ring-[color:var(--border)]"
                   >
                     <option value="">None</option>
 
@@ -1483,46 +1709,67 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
                     </optgroup>
                   </select>
 
-                  <div className="mt-3 text-sm text-white/75">
-                    <span className="text-white/55">Side suggestion:</span>{" "}
+                  <div className="mt-3 text-sm text-[color:var(--text-soft)]">
+                    <span className="text-[color:var(--muted)]">Side:</span>{" "}
                     {slot.mainId ? (
-                      slot.sideId && side ? (
-                        <Link href={`/recipes/${side.id}`} className="underline">
-                          {side.title}
-                        </Link>
+                      committedSide ? (
+                        <span>
+                          <Link href={`/recipes/${committedSide.id}`} className="underline">
+                            {committedSide.title}
+                          </Link>{" "}
+                          <span className="text-[color:var(--muted-2)]">(attached)</span>
+                        </span>
+                      ) : slot.manualSideName ? (
+                        <span className="text-[color:var(--text-soft)]">
+                          {slot.manualSideName} <span className="text-[color:var(--muted-2)]">(attached)</span>
+                        </span>
+                      ) : suggestedSide ? (
+                        <span className="text-[color:var(--text-soft)]">
+                          {suggestedSide.title} <span className="text-[color:var(--muted-2)]">(suggested)</span>
+                        </span>
                       ) : (
-                        <span className="text-white/50">None</span>
+                        <span className="text-[color:var(--muted-2)]">None</span>
                       )
                     ) : (
-                      <span className="text-white/50">Pick a main first</span>
+                      <span className="text-[color:var(--muted-2)]">Pick a main first</span>
                     )}
                   </div>
 
-                  {slot.mainId && !slot.sideId && nonRecipeSuggestion ? (
-                    <div className="mt-2 text-xs text-white/55">
-                      Suggested side (not a recipe):{" "}
-                      <span className="text-white/75 font-semibold">{nonRecipeSuggestion}</span>
+                  {slot.mainId && !slot.sideId && !slot.manualSideName && nonRecipeSuggestion ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted)]">
+                      <span>
+                        Suggested side (not a recipe):{" "}
+                        <span className="text-[color:var(--text-soft)] font-semibold">{nonRecipeSuggestion}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => acceptNonRecipeSide(slot.slotId, nonRecipeSuggestion)}
+                        className="rounded-full bg-emerald-400/20 hover:bg-emerald-400/25 px-3 py-1 text-xs font-extrabold ring-1 ring-[color:var(--border)] transition"
+                        title="Attach this non-recipe side"
+                      >
+                        Attach side
+                      </button>
                     </div>
                   ) : null}
 
                   {slot.mainId && main && mainP ? (
-                    <div className="mt-2 text-xs text-white/45">
+                    <div className="mt-2 text-xs text-[color:var(--muted-2)]">
                       {(() => {
-                        const ai = readProfileCourseForUI(main);
-                        const shown = ai.course ?? (mainP.course === "breakfast" ? "breakfast" : mainP.course);
-                        const src = ai.source === "none" ? null : ai.source;
+                        const effective = effectiveCourseForPick(main, mainP.course);
+                        const shown = effective ?? (mainP.course === "breakfast" ? "breakfast" : mainP.course);
+                        const src = null;
 
                         return (
                           <>
-                            Classified as <span className="text-white/65 font-semibold">{shown}</span>
-                            {src ? <span className="text-white/40">  -  {src}</span> : null}
+                            Classified as <span className="text-[color:var(--muted)] font-semibold">{shown}</span>
+                            {src ? <span className="text-[color:var(--muted-2)]">  -  {src}</span> : null}
                           </>
                         );
                       })()}
                       {mainP.vibes.size > 0 ? (
                         <>
                           {" "}
-                           -  vibe: <span className="text-white/55">{Array.from(mainP.vibes).slice(0, 3).join(", ")}</span>
+                           -  vibe: <span className="text-[color:var(--muted)]">{Array.from(mainP.vibes).slice(0, 3).join(", ")}</span>
                         </>
                       ) : null}
                     </div>
@@ -1536,6 +1783,48 @@ if (!looksDessert && (p.course === "main" || p.course === "breakfast")) {
     </RcPageShell>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -553,15 +553,15 @@ function saveBurnSkipConfirm(next: boolean) {
 ========================= */
 
 const btn =
-  "rounded-2xl bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold ring-1 ring-white/10 transition";
+  "rounded-2xl bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-4 py-2.5 text-sm font-semibold ring-1 ring-[color:var(--border)] transition";
 const btnPrimary =
   "rounded-2xl bg-fuchsia-500 hover:bg-fuchsia-400 px-4 py-2.5 text-sm font-semibold disabled:opacity-50 shadow-lg shadow-fuchsia-500/20 transition";
 
 const btnSm =
-  "rounded-xl bg-white/8 hover:bg-white/12 px-3 py-2 text-xs font-semibold ring-1 ring-white/10 transition";
+  "rounded-xl bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-3 py-2 text-xs font-semibold ring-1 ring-[color:var(--border)] transition";
 
 const iconBtn =
-  "rounded-xl bg-white/8 hover:bg-white/12 px-3 py-2 text-xs font-extrabold ring-1 ring-white/10 transition";
+  "rounded-xl bg-[color:var(--card)] hover:bg-[color:var(--hover)] px-3 py-2 text-xs font-extrabold ring-1 ring-[color:var(--border)] transition";
 
 type AnchorRect = { left: number; top: number; width: number; height: number };
 
@@ -1609,25 +1609,25 @@ export default function ShoppingListPage() {
           <span className="inline-block align-middle ml-2 h-2.5 w-2.5 rounded-full bg-fuchsia-400 shadow-[0_0_24px_rgba(232,121,249,0.35)]" />
         </h1>
 
-        <p className="mt-2 text-white/75 text-sm md:text-base">
+        <p className="mt-2 text-[color:var(--text-soft)] text-sm md:text-base">
           Items:{" "}
-          <span className="text-white/85 font-semibold">{totalVisibleCount}</span>{" "}
+          <span className="text-[color:var(--text)] font-semibold">{totalVisibleCount}</span>{" "}
           - Total qty:{" "}
-          <span className="text-white/85 font-semibold">{totalVisibleQty}</span>{" "}
+          <span className="text-[color:var(--text)] font-semibold">{totalVisibleQty}</span>{" "}
           - Crossed off:{" "}
-          <span className="text-white/85 font-semibold">
+          <span className="text-[color:var(--text)] font-semibold">
             {crossedOffVisibleCount}
           </span>
-          {status ? <span className="text-white/55"> - {status}</span> : null}
+          {status ? <span className="text-[color:var(--muted)]"> - {status}</span> : null}
         </p>
 
-        <div className="mt-1 text-xs md:text-sm text-white/55">
+        <div className="mt-1 text-xs md:text-sm text-[color:var(--muted)]">
           Tap a row to cross it off. Delete checked removes crossed-off items.
         </div>
 
         {dupTotal > 0 ? (
-          <div className="mt-2 text-xs text-white/55 flex items-center gap-2 flex-wrap">
-            <span className="text-white/45">Already-have reminders:</span>
+          <div className="mt-2 text-xs text-[color:var(--muted)] flex items-center gap-2 flex-wrap">
+            <span className="text-[color:var(--muted-2)]">Already-have reminders:</span>
             <button
               type="button"
               className={btnSm}
@@ -1715,17 +1715,17 @@ export default function ShoppingListPage() {
             if (e.target === e.currentTarget) setPantryAddNotice(null);
           }}
         >
-          <div className="w-full max-w-xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 p-6">
+          <div className="w-full max-w-xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-6">
             <div className="text-xl font-extrabold tracking-tight">
               You may already have this
             </div>
 
-            <div className="mt-2 text-white/70">
-              <span className="text-white/85 font-semibold">
+            <div className="mt-2 text-[color:var(--text-soft)]">
+              <span className="text-[color:var(--text)] font-semibold">
                 {toTitleCaseSmart(displayBaseName(pantryAddNotice.storageName))}
               </span>{" "}
               is already in{" "}
-              <span className="text-white/85 font-semibold">
+              <span className="text-[color:var(--text)] font-semibold">
                 {pantryAddNotice.storageLocation}
               </span>
               {typeof pantryAddNotice.storageQuantity === "number" ? (
@@ -1736,7 +1736,7 @@ export default function ShoppingListPage() {
                 </>
               ) : null}
               . Add{" "}
-              <span className="text-white/85 font-semibold">
+              <span className="text-[color:var(--text)] font-semibold">
                 {toTitleCaseSmart(displayBaseName(pantryAddNotice.requestedName))}
               </span>{" "}
               anyway?
@@ -1778,23 +1778,23 @@ export default function ShoppingListPage() {
             if (e.target === e.currentTarget) setAddDupPrompt(null);
           }}
         >
-          <div className="w-full max-w-xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 p-6">
+          <div className="w-full max-w-xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-6">
             <div className="text-xl font-extrabold tracking-tight">
               Already in list
             </div>
 
-            <div className="mt-2 text-white/70">
+            <div className="mt-2 text-[color:var(--text-soft)]">
               {addDupPrompt.actionIfYes === "inc_existing" ? (
                 <>
                   1{" "}
-                  <span className="text-white/85 font-semibold">
+                  <span className="text-[color:var(--text)] font-semibold">
                     {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
                   </span>{" "}
                   is already on your list. Add to existing or add as a separate entry?
                 </>
               ) : (
                 <>
-                  <span className="text-white/85 font-semibold">
+                  <span className="text-[color:var(--text)] font-semibold">
                     {toTitleCaseSmart(displayBaseName(addDupPrompt.existingName))}
                   </span>{" "}
                   is already in list, but this may be a different version. Keep it separate?
@@ -1903,14 +1903,14 @@ export default function ShoppingListPage() {
 
       {/* Pantry/Freezer review panel */}
       {showPfPanel ? (
-        <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4">
+        <div className="mt-6 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="min-w-0">
-              <div className="text-white/90 font-semibold">
+              <div className="text-[color:var(--text)] font-semibold">
                 {pfNewCount} item{pfNewCount === 1 ? "" : "s"} added from{" "}
-                <span className="text-white/80">Pantry &amp; Freezer</span>.
+                <span className="text-[color:var(--text-soft)]">Pantry &amp; Freezer</span>.
               </div>
-              <div className="mt-1 text-sm text-white/55">
+              <div className="mt-1 text-sm text-[color:var(--muted)]">
                 Highlighted until you acknowledge (does not change your list).
               </div>
             </div>
@@ -1936,13 +1936,13 @@ export default function ShoppingListPage() {
       ) : null}
 
       {/* Manual add */}
-      <div className="mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4">
+      <div className="mt-6 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <input
             value={newItemName}
             onChange={(e) => setNewItemName(e.target.value)}
             placeholder="Add item... (e.g., milk)"
-            className="w-full md:flex-1 rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+            className="w-full md:flex-1 rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] placeholder:text-[color:var(--muted-2)] ring-1 ring-[color:var(--border)] px-4 py-3 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
             onKeyDown={(e) => {
               if (e.key === "Enter") addManual();
             }}
@@ -1956,13 +1956,13 @@ export default function ShoppingListPage() {
             Add
           </button>
         </div>
-        <div className="mt-2 text-xs text-white/55">
+        <div className="mt-2 text-xs text-[color:var(--muted)]">
           Add is immediate. If it matches something, you'll get one Yes/No choice.
         </div>
       </div>
 
       {loading ? (
-        <div className="mt-6 text-white/70">Loading...</div>
+        <div className="mt-6 text-[color:var(--text-soft)]">Loading...</div>
       ) : (
         <div className="mt-6 grid gap-5">
           {CATEGORY_ORDER.map((cat) => {
@@ -1976,7 +1976,7 @@ export default function ShoppingListPage() {
             return (
               <div
                 key={cat}
-                className="rounded-3xl bg-white/5 ring-1 ring-white/10 p-4"
+                className="rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4"
               >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3 min-w-0">
@@ -1994,12 +1994,12 @@ export default function ShoppingListPage() {
                       title="Toggle everything in this category"
                     />
 
-                    <h2 className="m-0 text-base font-extrabold tracking-tight text-white/90">
+                    <h2 className="m-0 text-base font-extrabold tracking-tight text-[color:var(--text)]">
                       {cat}
                     </h2>
                   </div>
 
-                  <span className="text-xs font-extrabold text-white/55 rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                  <span className="text-xs font-extrabold text-[color:var(--muted)] rounded-full border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-1">
                     {groups.length}
                   </span>
                 </div>
@@ -2039,7 +2039,7 @@ export default function ShoppingListPage() {
                     return (
                       <div
                         key={g.key}
-                        className="rounded-2xl bg-white/5 ring-1 ring-white/10 px-3 py-3"
+                        className="rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] px-3 py-3"
                         style={
                           isHighlighted
                             ? {
@@ -2076,12 +2076,12 @@ export default function ShoppingListPage() {
                                 opacity: allCrossed ? 0.6 : 1,
                               }}
                             >
-                              <div className="text-sm md:text-base font-extrabold tracking-tight text-white/90 truncate">
+                              <div className="text-sm md:text-base font-extrabold tracking-tight text-[color:var(--text)] truncate">
                                 {displayName}
                                 {g.items.some((it) => (it.source_type || "").trim() === "derived") &&
                                 !g.items.some((it) => (it.source_type || "").trim() !== "derived") ? (
                                   <span
-                                    className="ml-2 inline-flex items-center justify-center align-middle text-white/45"
+                                    className="ml-2 inline-flex items-center justify-center align-middle text-[color:var(--muted-2)]"
                                     title="From meal plan"
                                     aria-label="From meal plan"
                                   >
@@ -2109,23 +2109,23 @@ export default function ShoppingListPage() {
                               </div>
 
                               {meta ? (
-                                <div className="mt-1 text-xs text-white/50 truncate">
+                                <div className="mt-1 text-xs text-[color:var(--muted)] truncate">
                                   {meta}
                                 </div>
                               ) : null}
 
                               {multi ? (
-                                <div className="mt-1 text-xs text-white/45">
+                                <div className="mt-1 text-xs text-[color:var(--muted-2)]">
                                   {g.items.length} entries
                                 </div>
                               ) : null}
 
                               {/* From recipe reveal (collapsed by default) */}
                               {hasRecipeSources ? (
-                                <div className="mt-2 text-xs text-white/55">
+                                <div className="mt-2 text-xs text-[color:var(--muted)]">
                                   <button
                                     type="button"
-                                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-semibold hover:bg-white/10"
+                                    className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-1 font-semibold hover:bg-[color:var(--card)]"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -2142,7 +2142,7 @@ export default function ShoppingListPage() {
                                         <Link
                                           key={rid}
                                           href={`/recipes/${rid}`}
-                                          className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-extrabold text-white/80 hover:bg-white/15 underline underline-offset-2"
+                                          className="inline-flex items-center rounded-full border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-1 text-[11px] font-extrabold text-[color:var(--text-soft)] hover:bg-[color:var(--hover)] underline underline-offset-2"
                                           onClick={(e) => e.stopPropagation()}
                                           title="Open recipe"
                                         >
@@ -2159,7 +2159,7 @@ export default function ShoppingListPage() {
                           <div className="flex items-center gap-2 shrink-0">
                             <button
                               type="button"
-                              className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-extrabold text-white/80 hover:bg-white/15"
+                              className="inline-flex items-center rounded-full border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-1 text-xs font-extrabold text-[color:var(--text-soft)] hover:bg-[color:var(--hover)]"
                               title={
                                 multi
                                   ? "Multiple entries (tap for options)"
@@ -2195,14 +2195,14 @@ export default function ShoppingListPage() {
                               style={{ background: "transparent" }}
                             />
                             <div
-                              className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-3 shadow-2xl"
+                              className="rounded-2xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-3 shadow-2xl"
                               style={popoverStyle(groupQtyAnchor, 340, 140)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
-                              <div className="text-sm font-extrabold text-white/85">
+                              <div className="text-sm font-extrabold text-[color:var(--text)]">
                                 Multiple entries
                               </div>
-                              <div className="mt-1 text-xs text-white/55">
+                              <div className="mt-1 text-xs text-[color:var(--muted)]">
                                 Merge to edit quantity (doesn't happen automatically).
                               </div>
 
@@ -2244,7 +2244,7 @@ export default function ShoppingListPage() {
                               style={{ background: "transparent" }}
                             />
                             <div
-                              className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-3 shadow-2xl"
+                              className="rounded-2xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-3 shadow-2xl"
                               style={popoverStyle(qtyAnchor, 320, 110)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
@@ -2253,7 +2253,7 @@ export default function ShoppingListPage() {
                                   items.find((x) => x.id === qtyOpenId) || null;
                                 if (!it) {
                                   return (
-                                    <div className="text-sm text-white/70">
+                                    <div className="text-sm text-[color:var(--text-soft)]">
                                       Missing item.
                                     </div>
                                   );
@@ -2262,7 +2262,7 @@ export default function ShoppingListPage() {
 
                                 return (
                                   <div className="flex items-center justify-between gap-3">
-                                    <div className="text-sm font-extrabold text-white/85">
+                                    <div className="text-sm font-extrabold text-[color:var(--text)]">
                                       Qty: {q}
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -2309,12 +2309,12 @@ export default function ShoppingListPage() {
                               style={{ background: "transparent" }}
                             />
                             <div
-                              className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-3 shadow-2xl"
+                              className="rounded-2xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-3 shadow-2xl"
                               style={popoverStyle(menuAnchor, 260, 210)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs font-extrabold text-white/70">
+                                <div className="text-xs font-extrabold text-[color:var(--text-soft)]">
                                   Actions
                                 </div>
                                 <button
@@ -2400,21 +2400,21 @@ export default function ShoppingListPage() {
                               style={{ background: "transparent" }}
                             />
                             <div
-                              className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-4 shadow-2xl"
+                              className="rounded-2xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-4 shadow-2xl"
                               style={popoverStyle(renameAnchor, 360, 170)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
-                              <div className="text-sm font-extrabold text-white/85">
+                              <div className="text-sm font-extrabold text-[color:var(--text)]">
                                 Rename
                               </div>
-                              <div className="mt-1 text-xs text-white/55">
+                              <div className="mt-1 text-xs text-[color:var(--muted)]">
                                 Updates item names (keeps grouping stable).
                               </div>
 
                               <input
                                 value={renameValue}
                                 onChange={(e) => setRenameValue(e.target.value)}
-                                className="mt-3 w-full rounded-2xl bg-white/5 text-white placeholder:text-white/35 ring-1 ring-white/10 px-4 py-2.5 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
+                                className="mt-3 w-full rounded-2xl bg-[color:var(--card)] text-[color:var(--text)] placeholder:text-[color:var(--muted-2)] ring-1 ring-[color:var(--border)] px-4 py-2.5 outline-none focus:ring-2 focus:ring-fuchsia-400/50"
                                 placeholder="e.g., Whole Milk"
                                 autoFocus
                                 onKeyDown={(e) => {
@@ -2477,18 +2477,18 @@ export default function ShoppingListPage() {
                             />
 
                             <div
-                              className="rounded-2xl bg-[#0b1026] ring-1 ring-white/10 p-4 shadow-2xl"
+                              className="rounded-2xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-4 shadow-2xl"
                               style={popoverStyle(detailsAnchor, 340, 160)}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="text-sm font-extrabold tracking-tight text-white/90">
+                                  <div className="text-sm font-extrabold tracking-tight text-[color:var(--text)]">
                                     {displayName}
                                 {g.items.some((it) => (it.source_type || "").trim() === "derived") &&
                                 !g.items.some((it) => (it.source_type || "").trim() !== "derived") ? (
                                   <span
-                                    className="ml-2 inline-flex items-center justify-center align-middle text-white/45"
+                                    className="ml-2 inline-flex items-center justify-center align-middle text-[color:var(--muted-2)]"
                                     title="From meal plan"
                                     aria-label="From meal plan"
                                   >
@@ -2514,7 +2514,7 @@ export default function ShoppingListPage() {
                                   </span>
                                 ) : null}
                                   </div>
-                                  <div className="mt-1 text-xs text-white/55">
+                                  <div className="mt-1 text-xs text-[color:var(--muted)]">
                                     Source only.
                                   </div>
                                 </div>
@@ -2546,7 +2546,7 @@ export default function ShoppingListPage() {
                                       <Link
                                         key={rid}
                                         href={`/recipes/${rid}`}
-                                        className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-extrabold text-white/80 hover:bg-white/15 underline underline-offset-2"
+                                        className="inline-flex items-center rounded-full border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-1 text-xs font-extrabold text-[color:var(--text-soft)] hover:bg-[color:var(--hover)] underline underline-offset-2"
                                         onClick={(e) => e.stopPropagation()}
                                         title="Open recipe"
                                       >
@@ -2558,7 +2558,7 @@ export default function ShoppingListPage() {
                                   const source =
                                     g.items[0]?.source_type?.trim() || "manual";
                                   return (
-                                    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-extrabold text-white/70">
+                                    <span className="inline-flex items-center rounded-full border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-1 text-xs font-extrabold text-[color:var(--text-soft)]">
                                       {source}
                                     </span>
                                   );
@@ -2586,16 +2586,16 @@ export default function ShoppingListPage() {
             if (e.target === e.currentTarget) setBurnPromptOpen(false);
           }}
         >
-          <div className="w-full max-w-xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 p-6">
+          <div className="w-full max-w-xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-6">
             <div className="text-xl font-extrabold tracking-tight">
               {activeCount > 0 && activeCrossedCount === activeCount
                 ? "All items crossed off."
                 : activeCrossedCount === activeCount ? "Delete all items?" : "Delete checked items?"}
             </div>
 
-            <div className="mt-2 text-white/70">{activeCrossedCount === activeCount ? "This deletes the whole list." : "This deletes only the checked items."}</div>
+            <div className="mt-2 text-[color:var(--text-soft)]">{activeCrossedCount === activeCount ? "This deletes the whole list." : "This deletes only the checked items."}</div>
 
-            <label className="mt-5 flex items-center gap-3 text-sm text-white/75 select-none">
+            <label className="mt-5 flex items-center gap-3 text-sm text-[color:var(--text-soft)] select-none">
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-fuchsia-500"
@@ -2641,17 +2641,17 @@ export default function ShoppingListPage() {
             if (e.target === e.currentTarget) setPfReviewOpen(false);
           }}
         >
-          <div className="w-full max-w-xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 p-6">
+          <div className="w-full max-w-xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-6">
             <div className="text-xl font-extrabold tracking-tight">
               Review Pantry Adds
             </div>
-            <div className="mt-2 text-white/70">
+            <div className="mt-2 text-[color:var(--text-soft)]">
               Recently added from Pantry &amp; Freezer:
             </div>
 
             <div className="mt-5 grid gap-6">
               <div
-                className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4"
+                className="rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4"
                 style={{ maxHeight: 360, overflow: "auto" }}
               >
                 <div className="grid gap-4">
@@ -2660,10 +2660,10 @@ export default function ShoppingListPage() {
                       key={`${e.name}-${e.ts}`}
                       className="flex items-baseline justify-between gap-3 flex-wrap"
                     >
-                      <div className="font-extrabold text-white/85">
+                      <div className="font-extrabold text-[color:var(--text)]">
                         {toTitleCaseSmart(displayBaseName(e.name))}
                       </div>
-                      <div className="text-xs text-white/50">
+                      <div className="text-xs text-[color:var(--muted)]">
                         {new Date(e.ts).toLocaleString()}
                       </div>
                     </div>
@@ -2689,7 +2689,7 @@ export default function ShoppingListPage() {
                 </button>
               </div>
 
-              <div className="text-xs text-white/55">
+              <div className="text-xs text-[color:var(--muted)]">
                 This doesn't change your list - it just clears highlights.
               </div>
             </div>
@@ -2706,13 +2706,13 @@ export default function ShoppingListPage() {
             if (e.target === e.currentTarget) setDupReviewOpen(false);
           }}
         >
-          <div className="w-full max-w-2xl rounded-3xl bg-[#0b1026] ring-1 ring-white/10 p-6">
+          <div className="w-full max-w-2xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] p-6">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-xl font-extrabold tracking-tight">
                   Decisions
                 </div>
-                <div className="mt-2 text-white/70">
+                <div className="mt-2 text-[color:var(--text-soft)]">
                   Already-have matches. Keep is the default. Nothing changes
                   unless you choose.
                 </div>
@@ -2739,11 +2739,11 @@ export default function ShoppingListPage() {
             </div>
 
             <div
-              className="mt-5 rounded-2xl bg-white/5 ring-1 ring-white/10 p-4"
+              className="mt-5 rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4"
               style={{ maxHeight: 460, overflow: "auto" }}
             >
               {actionableAlreadyHave.length === 0 ? (
-                <div className="text-white/70 text-sm">
+                <div className="text-[color:var(--text-soft)] text-sm">
                   Nothing to decide right now.
                 </div>
               ) : (
@@ -2764,16 +2764,16 @@ export default function ShoppingListPage() {
                     return (
                       <div
                         key={d.canon}
-                        className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4"
+                        className="rounded-2xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-4"
                       >
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="min-w-0">
-                            <div className="font-extrabold text-white/85 text-lg">
+                            <div className="font-extrabold text-[color:var(--text)] text-lg">
                               {toTitleCaseSmart(d.display)}
                             </div>
-                            <div className="mt-1 text-sm text-white/55">
+                            <div className="mt-1 text-sm text-[color:var(--muted)]">
                               In storage:{" "}
-                              <span className="text-white/75 font-semibold">
+                              <span className="text-[color:var(--text-soft)] font-semibold">
                                 {storagePreview || `${d.storageMatches.length} match(es)`}
                               </span>
                             </div>
@@ -2809,7 +2809,7 @@ export default function ShoppingListPage() {
                           </div>
                         </div>
 
-                        <div className="mt-3 text-xs text-white/45">
+                        <div className="mt-3 text-xs text-[color:var(--muted-2)]">
                           Default is keep. This is just a reminder tray.
                         </div>
                       </div>
@@ -2819,7 +2819,7 @@ export default function ShoppingListPage() {
               )}
             </div>
 
-            <div className="mt-4 text-xs text-white/55">
+            <div className="mt-4 text-xs text-[color:var(--muted)]">
               Keep on list resolves for now. Ignore match stops future reminders
               for that match.
             </div>
@@ -2829,4 +2829,8 @@ export default function ShoppingListPage() {
     </RcPageShell>
   );
 }
+
+
+
+
 

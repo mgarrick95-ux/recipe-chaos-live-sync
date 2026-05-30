@@ -16,8 +16,8 @@ export default function RcPageShell({
   bodyClassName = "py-8",
 }: RcPageShellProps) {
   return (
-    <div className="min-h-screen bg-[#0b1026] text-white">
-      <div className="border-b border-white/10">
+    <div className="rc-page">
+      <div className="border-b border-[color:var(--border)]">
         <div className={`mx-auto px-6 ${maxWidthClassName}`}>{header}</div>
       </div>
 
@@ -27,4 +27,3 @@ export default function RcPageShell({
     </div>
   );
 }
-
