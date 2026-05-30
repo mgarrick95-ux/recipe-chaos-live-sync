@@ -1,7 +1,10 @@
 "use client";
 
-import { supabase, hasSupabase } from "@/lib/supabaseClient";
-export { supabase, hasSupabase };
+import { supabase } from "@/lib/supabaseClient";
+
+export { supabase };
+
+const hasSupabase = Boolean(supabase);
 
 export type Stock = { id: string; name: string; qty: number; unit?: string };
 export type Reservation = {
@@ -102,4 +105,5 @@ export function subscribeRealtime(handlers: RealtimeHandlers) {
     supabase.removeChannel(channel);
   };
 }
+
 
