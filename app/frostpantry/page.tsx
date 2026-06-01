@@ -1409,7 +1409,7 @@ export default function FrostPantryPage() {
           </div>
         </div>
       ) : (
-        <div className="mt-8 grid gap-6">
+        <div className="mt-8 grid gap-4 md:gap-6">
           {visibleItems.map((item) => {
             const checked = selectedSet.has(item.id);
             const expired = isExpired(item);
