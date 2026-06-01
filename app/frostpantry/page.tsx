@@ -871,7 +871,7 @@ export default function FrostPantryPage() {
         title="Pantry & Freezer"
         tagline="lets see what you got"
         chaos={heroChaos}
-        height={310}
+        height={220}
         rightSlot={
           <div className="flex items-center gap-1">
             <div className="relative" ref={addOptionsRef}>
