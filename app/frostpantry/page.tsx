@@ -873,7 +873,7 @@ export default function FrostPantryPage() {
         chaos={heroChaos}
         height={310}
         rightSlot={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <div className="relative" ref={addOptionsRef}>
               <button
                 type="button"
@@ -987,7 +987,7 @@ export default function FrostPantryPage() {
           />
           <div className="absolute inset-0 flex items-center justify-center p-4">
             <div className="w-full max-w-3xl rounded-3xl bg-[color:var(--panel-solid)] ring-1 ring-[color:var(--border)] shadow-2xl p-6 text-[color:var(--text)]">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <div className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
                     <span>Duplicates</span>
@@ -1033,7 +1033,7 @@ export default function FrostPantryPage() {
                         <div className="mt-2 text-[11px] text-[color:var(--muted-2)] break-all">id: {it.id}</div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => setDupeKeepId(it.id)}
@@ -1251,7 +1251,7 @@ export default function FrostPantryPage() {
       {/* Duplicate banner (single button: Review all) */}
       {dupBannerVisible ? (
         <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-5 text-[color:var(--text)]">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <div className="text-sm font-extrabold tracking-tight">
                 Duplicates found{" "}
@@ -1278,9 +1278,9 @@ export default function FrostPantryPage() {
       {/* Use Soon-ish */}
       {soonishMain.length > 0 ? (
         <div className="mt-8 rounded-3xl bg-[color:var(--card)] ring-1 ring-[color:var(--border)] p-6 text-[color:var(--text)]">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h2 className="text-2xl font-extrabold tracking-tight">Use Soon-ish</h2>
+              <h2 className="text-lg md:text-xl font-extrabold tracking-tight leading-tight">Use Soon-ish</h2>
               <p className="mt-2 text-[color:var(--muted)]">Worth a quick look.</p>
             </div>
 
@@ -1409,7 +1409,7 @@ export default function FrostPantryPage() {
           </div>
         </div>
       ) : (
-        <div className="mt-8 grid gap-4 md:gap-6">
+        <div className="mt-6 grid gap-2">
           {visibleItems.map((item) => {
             const checked = selectedSet.has(item.id);
             const expired = isExpired(item);
@@ -1422,9 +1422,9 @@ export default function FrostPantryPage() {
             const mergeReady = Boolean(itemGroupKey && mergeableGroupKeySet.has(itemGroupKey));
 
             return (
-              <div key={item.id} className="rounded-3xl bg-[color:var(--card)] p-4 md:p-6 ring-1 ring-[color:var(--border)] text-[color:var(--text)]">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="flex items-start gap-4">
+              <div key={item.id} className="rounded-2xl bg-[color:var(--card)] px-3 py-3 md:px-4 md:py-3 ring-1 ring-[color:var(--border)] text-[color:var(--text)]">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
                     <label className="flex items-center gap-2 pt-1 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1436,7 +1436,7 @@ export default function FrostPantryPage() {
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-2xl font-extrabold tracking-tight">{item.name}</div>
+                        <div className="text-lg md:text-xl font-extrabold tracking-tight leading-tight">{item.name}</div>
 
                         {isDuplicateRow ? (
   <button
@@ -1461,19 +1461,19 @@ export default function FrostPantryPage() {
                         <Chip text={item.location} />
                       </div>
 
-                      <div className="mt-2 text-[color:var(--muted-2)] text-sm">
+                      <div className="mt-1 text-[color:var(--muted-2)] text-xs md:text-sm">
                         {prettyDateShort(item.stored_on) ? `stored ${prettyDateShort(item.stored_on)}` : ""}
                         {item.use_by ? `  -  use by ${prettyDateShort(item.use_by)}` : ""}
                       </div>
 
-                      {item.notes ? <div className="mt-2 text-[color:var(--muted-2)] text-sm">{item.notes}</div> : null}
+                      {item.notes ? <div className="mt-1 text-[color:var(--muted-2)] text-xs md:text-sm">{item.notes}</div> : null}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap ml-8 md:ml-0">
+                    <div className="flex items-center gap-1">
                       <button
-                        className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2"
+                        className="h-9 w-9 rounded-xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] p-0 text-sm font-bold"
                         disabled={busyId === item.id || bulkBusy || editBusy}
                         onClick={() => changeQuantity(item.id, -1)}
                         type="button"
@@ -1481,12 +1481,12 @@ export default function FrostPantryPage() {
                         "
                       </button>
 
-                      <div className="min-w-[120px] text-center font-semibold text-[color:var(--text-soft)]">
+                      <div className="min-w-[44px] text-center text-sm font-semibold text-[color:var(--text-soft)]">
                         {item.quantity} {item.unit}
                       </div>
 
                       <button
-                        className="rounded-2xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] px-4 py-2"
+                        className="h-9 w-9 rounded-xl bg-[color:var(--hover)] hover:bg-[color:var(--hover)] p-0 text-sm font-bold"
                         disabled={busyId === item.id || bulkBusy || editBusy}
                         onClick={() => changeQuantity(item.id, +1)}
                         type="button"
@@ -1504,7 +1504,7 @@ export default function FrostPantryPage() {
                       title={isEditing ? "Close edit" : "Edit inline"}
                       aria-label={isEditing ? "Close edit" : "Edit inline"}
                     >
-                      <span className="text-xl leading-none">{isEditing ? "Close" : "Edit"}</span>
+                      <span className="text-xl leading-none">{isEditing ? "×" : "✎"}</span>
                     </button>
 
                     {/* Icon-only delete */}
@@ -1534,7 +1534,7 @@ export default function FrostPantryPage() {
                         <div className="mt-1 text-sm text-[color:var(--muted)]">Inline, on purpose. No teleporting to another page.</div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={cancelInlineEdit}
