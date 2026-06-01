@@ -1,4 +1,4 @@
-﻿// app/page.tsx
+// app/page.tsx
 import Link from "next/link";
 
 function SoftCard({
@@ -71,8 +71,8 @@ export default function HomePage() {
       {/* Cards */}
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="grid gap-5 md:grid-cols-3">
-          <SoftCard title="Recipes" desc="Store and revisit meals you actually make." href="/recipes" icon="[emoji]“–" />
-          <SoftCard title="Pantry & Freezer" desc="Track what's actually in stock." href="/frostpantry" icon="[emoji]§Š" />
+          <SoftCard title="Recipes" desc="Store and revisit meals you actually make." href="/recipes" icon="📖" />
+          <SoftCard title="Pantry & Freezer" desc="Track what's actually in stock." href="/frostpantry" icon="🧊" />
           <SoftCard title="Meal Planning" desc="Simple, flexible meal ideas. No pressure." href="/meal-planning" icon="🍽️" />
         </div>
 
