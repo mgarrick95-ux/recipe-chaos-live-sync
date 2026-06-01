@@ -1422,7 +1422,7 @@ export default function FrostPantryPage() {
             const mergeReady = Boolean(itemGroupKey && mergeableGroupKeySet.has(itemGroupKey));
 
             return (
-              <div key={item.id} className="rounded-3xl bg-[color:var(--card)] p-6 ring-1 ring-[color:var(--border)] text-[color:var(--text)]">
+              <div key={item.id} className="rounded-3xl bg-[color:var(--card)] p-4 md:p-6 ring-1 ring-[color:var(--border)] text-[color:var(--text)]">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex items-start gap-4">
                     <label className="flex items-center gap-2 pt-1 cursor-pointer">
